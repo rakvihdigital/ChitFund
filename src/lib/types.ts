@@ -66,6 +66,7 @@ export interface ChitGroup {
   status: 'RECRUITING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
   currentMonth: number;
   nextAuctionDate: string;
+  maxTicketsPerPerson: number; // Maximum tickets a single person can take (default 3)
 }
 
 export interface ChitSubscriber {

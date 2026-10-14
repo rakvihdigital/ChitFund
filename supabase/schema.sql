@@ -87,6 +87,7 @@ CREATE TABLE public.chit_groups (
     duration_months INT NOT NULL, -- e.g. 20
     monthly_contribution NUMERIC(12, 2) NOT NULL, -- e.g. 5000
     total_members INT NOT NULL, -- e.g. 20
+    max_tickets_per_person INT DEFAULT 3, -- Max tickets a single subscriber can hold in this scheme
     foreman_commission_percent NUMERIC(5, 2) DEFAULT 5.00, -- 5% per regulations
     min_bid_discount_percent NUMERIC(5, 2) DEFAULT 5.00,
     max_bid_discount_percent NUMERIC(5, 2) DEFAULT 30.00,
@@ -105,8 +106,8 @@ CREATE TABLE public.chit_subscribers (
     has_won_auction BOOLEAN DEFAULT FALSE,
     won_auction_month INT,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(group_id, seat_number),
-    UNIQUE(group_id, user_id)
+    UNIQUE(group_id, seat_number)
+    -- Note: Single user can hold up to max_tickets_per_person seats in this group
 );
 
 -- 8. Installments Schedule Table

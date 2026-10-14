@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { ClientLayout } from '@/components/ClientLayout';
+import { AppProvider } from '@/lib/store';
 
 export const metadata: Metadata = {
   title: 'RAKVIH Solutions — Digital Chit Fund Management Platform',
@@ -15,8 +15,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <ClientLayout>{children}</ClientLayout>
+      <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
+        <AppProvider>{children}</AppProvider>
       </body>
     </html>
   );

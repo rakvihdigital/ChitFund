@@ -1,84 +1,117 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calculator, ArrowRight, CheckCircle, Percent, DollarSign, Sparkles } from 'lucide-react';
+import {
+  Calculator,
+  ArrowRight,
+  Sparkles,
+  Award,
+  TrendingDown,
+  Gift,
+  HelpCircle,
+  Coins
+} from 'lucide-react';
 
 export const ChitCalculator: React.FC = () => {
   const [chitValue, setChitValue] = useState<number>(100000);
   const [durationMonths, setDurationMonths] = useState<number>(20);
-  const [expectedAvgDiscountPercent, setExpectedAvgDiscountPercent] = useState<number>(20);
+  const [discountPercent, setDiscountPercent] = useState<number>(20);
 
   const baseMonthlyContribution = chitValue / durationMonths;
   const totalMembers = durationMonths;
 
-  // Foreman Commission = 5% of Chit Value
+  // Foreman Commission = 5% of Chit Value (statutory limit under Chit Funds Act 1982)
   const foremanFee = (chitValue * 5) / 100;
 
-  // Total Auction Discount = Chit Value * expectedAvgDiscountPercent / 100
-  const auctionDiscountAmount = (chitValue * expectedAvgDiscountPercent) / 100;
+  // Auction Bid Discount offered by the winning bidder
+  const auctionDiscountAmount = Math.round((chitValue * discountPercent) / 100);
+
+  // Take-home Prize Amount received by the winner ("Get My Amount")
+  const winnerNetPayout = chitValue - auctionDiscountAmount;
 
   // Dividend Pool = Auction Discount - Foreman Fee
   const totalDividendPool = Math.max(0, auctionDiscountAmount - foremanFee);
 
-  // Dividend per member = Total Dividend Pool / totalMembers
+  // Monthly Dividend earned per subscriber
   const dividendPerMember = Math.floor(totalDividendPool / totalMembers);
 
-  // Net payable monthly instalment by member
+  // Net payable monthly instalment after dividend deduction
   const netMonthlyInstalment = baseMonthlyContribution - dividendPerMember;
-
-  // Net Prize money received by Winner
-  const winnerNetPayout = chitValue - auctionDiscountAmount;
 
   return (
     <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-6 sm:p-8 card-shadow">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-3 bg-amber-50 rounded-2xl text-[#d97706]">
-          <Calculator className="w-6 h-6" />
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-gray-100 pb-5">
+        <div className="flex items-center space-x-3">
+          <div className="p-3 bg-amber-50 rounded-2xl text-amber-600">
+            <Calculator className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 flex items-center space-x-2">
+              <span>Chit Dividend & Prize Money Estimator</span>
+              <Sparkles className="w-4 h-4 text-amber-500" />
+            </h2>
+            <p className="text-xs text-gray-500">
+              Simulate auction discount bidding, take-home prize money (&quot;Get My Amount&quot;), and monthly dividend savings
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Interactive Chit Estimator</h2>
-          <p className="text-xs text-gray-500">
-            Calculate your monthly savings, dividend returns, and payout estimates
-          </p>
+
+        <div className="inline-flex items-center space-x-2 bg-[#f0f4e8] border border-[#d2dfbd] px-3 py-1.5 rounded-full text-xs font-bold text-[#374421]">
+          <Coins className="w-4 h-4 text-amber-500" />
+          <span>Chit Funds Act 1982 Formula</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Input Sliders */}
-        <div className="space-y-6">
-          {/* Total Chit Amount */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Inputs (7 Cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Step 1: Chit Value */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                Total Chit Value
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                1. Select Chit Value
               </label>
-              <span className="text-lg font-extrabold text-[#4d5d30]">
+              <span className="text-xl font-black text-[#374421]">
                 ₹{chitValue.toLocaleString('en-IN')}
               </span>
+            </div>
+            <div className="grid grid-cols-4 gap-2 mb-2">
+              {[100000, 250000, 500000, 1000000].map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setChitValue(val)}
+                  className={`py-2 text-xs font-bold rounded-xl transition-all border cursor-pointer ${
+                    chitValue === val
+                      ? 'bg-[#374421] text-white border-[#374421] shadow-sm'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  ₹{(val / 100000).toFixed(val % 100000 === 0 ? 0 : 1)} Lakh
+                </button>
+              ))}
             </div>
             <input
               type="range"
               min={50000}
               max={2500000}
-              step={50000}
+              step={25000}
               value={chitValue}
               onChange={(e) => setChitValue(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4d5d30]"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#374421]"
             />
-            <div className="flex justify-between text-[11px] text-gray-400 mt-1 font-medium">
-              <span>₹50,000</span>
-              <span>₹10 Lakh</span>
-              <span>₹25 Lakh</span>
-            </div>
           </div>
 
-          {/* Duration Months */}
+          {/* Step 2: Duration / Members */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                Duration / Total Members
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                2. Scheme Duration & Members
               </label>
-              <span className="text-lg font-bold text-gray-900">{durationMonths} Months</span>
+              <span className="text-sm font-bold text-gray-900">
+                {durationMonths} Months ({durationMonths} Subscribers)
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[20, 25, 40].map((m) => (
@@ -86,95 +119,157 @@ export const ChitCalculator: React.FC = () => {
                   key={m}
                   type="button"
                   onClick={() => setDurationMonths(m)}
-                  className={`py-2 text-xs font-bold rounded-xl transition-all border ${
+                  className={`py-2 text-xs font-bold rounded-xl transition-all border cursor-pointer ${
                     durationMonths === m
-                      ? 'bg-[#4d5d30] text-white border-[#4d5d30] shadow-md'
+                      ? 'bg-[#374421] text-white border-[#374421] shadow-sm'
                       : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  {m} Months ({m} Members)
+                  {m} Months ({m} Seats)
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Average Winning Auction Bid Discount % */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                Est. Auction Winning Bid Discount %
-              </label>
-              <span className="text-sm font-bold text-amber-600">{expectedAvgDiscountPercent}%</span>
+          {/* Step 3: Auction Bid Discount */}
+          <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <label className="text-xs font-bold text-amber-950 flex items-center space-x-1">
+                  <span>3. Auction Bid Discount You Forego</span>
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-700" />
+                </label>
+                <span className="text-[11px] text-amber-800">
+                  The discount bid you offer in auction to take the prize money early
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-black text-amber-700 block">
+                  ₹{auctionDiscountAmount.toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
+                  {discountPercent}% of Chit Value
+                </span>
+              </div>
             </div>
+
+            {/* Quick preset buttons */}
+            <div className="grid grid-cols-4 gap-2 pt-1">
+              {[
+                { label: '5% (Min)', val: 5 },
+                { label: '15% (Low)', val: 15 },
+                { label: '20% (Avg)', val: 20 },
+                { label: '30% (Max)', val: 30 }
+              ].map((p) => (
+                <button
+                  key={p.val}
+                  type="button"
+                  onClick={() => setDiscountPercent(p.val)}
+                  className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                    discountPercent === p.val
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-100/60'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
             <input
               type="range"
               min={5}
               max={30}
               step={1}
-              value={expectedAvgDiscountPercent}
-              onChange={(e) => setExpectedAvgDiscountPercent(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(Number(e.target.value))}
+              className="w-full h-2 bg-amber-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
             />
-            <div className="flex justify-between text-[11px] text-gray-400 mt-1 font-medium">
-              <span>5% (Min Regulated)</span>
-              <span>20% (Avg)</span>
-              <span>30% (Max Allowed)</span>
+            <div className="flex justify-between text-[10px] text-amber-800 font-medium">
+              <span>5% (Statutory Minimum Bid)</span>
+              <span>30% (Statutory Cap)</span>
             </div>
           </div>
         </div>
 
-        {/* Output Calculation Cards */}
-        <div className="bg-[#f2f5ed] rounded-2xl p-6 flex flex-col justify-between border border-[#e2e8d5]">
+        {/* Right Output Calculation Summary (5 Cols) */}
+        <div className="lg:col-span-5 bg-[#f4f7ef] rounded-2xl p-6 flex flex-col justify-between border border-[#dce5cf] space-y-5">
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-[#374421] uppercase tracking-wider flex items-center space-x-1.5">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Chit Financial Breakdown</span>
-            </h3>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm">
-                <span className="text-[11px] text-gray-500 font-medium block">Gross Monthly Dues</span>
-                <span className="text-base font-bold text-gray-900">
-                  ₹{baseMonthlyContribution.toLocaleString('en-IN')}
-                </span>
+            {/* BIG PROMINENT RESULT: "GET MY AMOUNT" */}
+            <div className="bg-white p-5 rounded-2xl border-2 border-emerald-500 shadow-md text-center space-y-1 relative overflow-hidden">
+              <div className="inline-flex items-center space-x-1.5 bg-emerald-100 text-emerald-900 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider mb-1">
+                <Award className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Your Net Prize Money (&quot;Get My Amount&quot;)</span>
               </div>
-              <div className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm">
-                <span className="text-[11px] text-gray-500 font-medium block">Est. Dividend / Month</span>
-                <span className="text-base font-bold text-emerald-600">
-                  + ₹{dividendPerMember.toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-sm space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-semibold text-gray-700">Net Monthly Contribution</span>
-                <span className="text-xl font-extrabold text-[#4d5d30]">
-                  ₹{netMonthlyInstalment.toLocaleString('en-IN')}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-500 leading-tight">
-                You pay less than gross dues thanks to monthly auction dividend distributions among all subscribers.
+              <p className="text-3xl sm:text-4xl font-black text-[#2f3b1b] tracking-tight">
+                ₹{winnerNetPayout.toLocaleString('en-IN')}
+              </p>
+              <p className="text-xs text-gray-500 font-medium">
+                Chit Value (₹{chitValue.toLocaleString('en-IN')}) minus Bid Discount (₹{auctionDiscountAmount.toLocaleString('en-IN')})
               </p>
             </div>
 
-            <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-xl space-y-1">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-amber-900">Winner Net Prize Payout</span>
-                <span className="text-lg font-black text-amber-700">
-                  ₹{winnerNetPayout.toLocaleString('en-IN')}
+            {/* DIVIDEND DISCOUNT BREAKDOWN CARD */}
+            <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <Gift className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Dividend Generated For Members</span>
                 </span>
+                <span className="text-emerald-700 font-extrabold text-xs">
+                  ₹{totalDividendPool.toLocaleString('en-IN')} Pool
+                </span>
+              </h4>
+
+              <div className="space-y-2 text-xs pt-1 border-t border-gray-100">
+                <div className="flex justify-between text-gray-600">
+                  <span>Gross Monthly Dues:</span>
+                  <span className="font-semibold text-gray-900">
+                    ₹{baseMonthlyContribution.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50/80 p-2 rounded-lg">
+                  <span className="flex items-center space-x-1">
+                    <TrendingDown className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Monthly Dividend Discount:</span>
+                  </span>
+                  <span>- ₹{dividendPerMember.toLocaleString('en-IN')} / member</span>
+                </div>
+
+                <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                  <div>
+                    <span className="font-bold text-gray-900 flex items-center space-x-1">
+                      <span>Net Dues Each Member Pays:</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#374421]" />
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      (Gross ₹{baseMonthlyContribution} - Dividend ₹{dividendPerMember})
+                    </span>
+                  </div>
+                  <span className="text-base font-black text-[#374421]">
+                    ₹{netMonthlyInstalment.toLocaleString('en-IN')}
+                  </span>
+                </div>
               </div>
-              <p className="text-[11px] text-amber-800 leading-tight">
-                Amount received by highest bidding subscriber after bid discount deduction. Foreman Fee: 5% (₹
-                {foremanFee.toLocaleString('en-IN')}).
-              </p>
+            </div>
+
+            {/* Statutory Transparency Box */}
+            <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 text-[11px] text-gray-600 space-y-1">
+              <div className="flex justify-between">
+                <span>Foreman Commission (5% fixed):</span>
+                <span className="font-bold text-gray-900">₹{foremanFee.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Members Sharing Dividend:</span>
+                <span className="font-bold text-gray-900">{totalMembers} Subscribers</span>
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-gray-200 text-[10px] text-gray-500 flex items-center justify-between">
-            <span>* Compliant with Govt Chit Funds Act 1982</span>
-            <span className="font-semibold text-[#4d5d30]">RAKVIH Solutions Private Limited</span>
+          <div className="pt-3 border-t border-[#dce5cf] text-[10px] text-gray-500 flex items-center justify-between">
+            <span>* Governed under Central Chit Funds Act 1982</span>
+            <span className="font-bold text-[#374421]">RAKVIH Solutions Pvt Ltd</span>
           </div>
         </div>
       </div>
