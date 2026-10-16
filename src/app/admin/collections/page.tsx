@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useApp } from '@/lib/store';
-import { CreditCard, ArrowDownRight } from 'lucide-react';
+import { CreditCard } from 'lucide-react';
 
 export default function AdminCollectionsPage() {
   const { payments, installments } = useApp();
@@ -21,27 +21,27 @@ export default function AdminCollectionsPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xs space-y-1">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">
           <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Total Realized Collections</span>
-          <span className="text-3xl font-black text-emerald-700">₹{totalCollected.toLocaleString('en-IN')}</span>
+          <span className="text-3xl font-semibold text-emerald-700">₹{totalCollected.toLocaleString('en-IN')}</span>
           <span className="text-[11px] text-gray-500 block">{payments.length} Transactions</span>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xs space-y-1">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">
           <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Outstanding Dues</span>
-          <span className="text-3xl font-black text-amber-600">₹{totalPendingDues.toLocaleString('en-IN')}</span>
+          <span className="text-3xl font-semibold text-amber-600">₹{totalPendingDues.toLocaleString('en-IN')}</span>
           <span className="text-[11px] text-gray-500 block">{pendingDues.length} Pending Monthly Instalments</span>
         </div>
       </div>
 
       {payments.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <CreditCard className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No Payment Transactions Recorded</h4>
           <p className="text-xs">Payments submitted by subscribers will appear here for settlement reconciliation.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-xs">
+        <div className="bg-white rounded-[20px] border border-gray-200 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-100 text-gray-700 font-bold">
@@ -68,7 +68,7 @@ export default function AdminCollectionsPage() {
                         {pay.paymentMode}
                       </span>
                     </td>
-                    <td className="p-4 font-black text-emerald-700 text-sm">₹{pay.amountPaid}</td>
+                    <td className="p-4 font-semibold text-emerald-700 text-sm">₹{pay.amountPaid}</td>
                     <td className="p-4">
                       <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
                         {pay.status}

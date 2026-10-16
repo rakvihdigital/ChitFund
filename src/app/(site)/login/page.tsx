@@ -109,12 +109,12 @@ function CustomerLoginForm() {
   };
 
   return (
-    <div className="w-full max-w-[500px] bg-white rounded-xl shadow-xl border border-gray-200 p-6 sm:p-8">
+    <div className="auth-card w-full max-w-[500px] bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
       {/* Brand Header */}
       <div className="flex items-center space-x-3 mb-5">
-        <div className="w-11 h-11 rounded-lg bg-gray-50 border border-gray-200 p-1 flex items-center justify-center flex-shrink-0">
+        <div className="w-11 h-11 rounded-lg p-1 flex items-center justify-center flex-shrink-0">
           <Image
-            src="/logo.png"
+            src="/logo-transparent.png"
             alt="RAKVIH"
             width={36}
             height={36}
@@ -123,7 +123,7 @@ function CustomerLoginForm() {
           />
         </div>
         <div>
-          <h3 className="font-extrabold text-base text-gray-900 leading-tight">
+          <h3 className="font-semibold text-base text-gray-900 leading-tight">
             RAKVIH SOLUTIONS
           </h3>
           <p className="text-xs text-gray-500">
@@ -209,7 +209,7 @@ function CustomerLoginForm() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Ramesh Kumar"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                 </div>
@@ -229,7 +229,7 @@ function CustomerLoginForm() {
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="9876543210"
                     maxLength={10}
-                    className="w-full pl-12 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-12 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                 </div>
@@ -247,7 +247,7 @@ function CustomerLoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                   required
                 />
               </div>
@@ -265,12 +265,13 @@ function CustomerLoginForm() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min 6 characters"
-                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                     className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-700 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -289,7 +290,7 @@ function CustomerLoginForm() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                 </div>
@@ -302,7 +303,7 @@ function CustomerLoginForm() {
                 id="page-normal-terms"
                 checked={agreedTerms}
                 onChange={(e) => setAgreedTerms(e.target.checked)}
-                className="mt-0.5 rounded text-[#374421] focus:ring-[#374421] cursor-pointer"
+                className="mt-0.5 rounded text-[#123d33] focus:ring-[#123d33] cursor-pointer"
               />
               <label htmlFor="page-normal-terms" className="cursor-pointer leading-tight">
                 I agree to the <span className="font-semibold text-gray-800">Chit Funds Act, 1982</span> rules and platform privacy terms.
@@ -322,7 +323,7 @@ function CustomerLoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="subscriber@example.com"
-                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                   required
                 />
               </div>
@@ -348,12 +349,13 @@ function CustomerLoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                  className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-700 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -367,7 +369,7 @@ function CustomerLoginForm() {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded text-[#374421] focus:ring-[#374421]"
+                  className="rounded text-[#123d33] focus:ring-[#123d33]"
                 />
                 <span>Remember me</span>
               </label>
@@ -382,7 +384,7 @@ function CustomerLoginForm() {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full bg-[#374421] hover:bg-[#283218] text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-3"
+          className="w-full bg-[#123d33] hover:bg-[#283218] text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-3"
         >
           <span>
             {isLoading
@@ -406,7 +408,7 @@ function CustomerLoginForm() {
                 setMode('signin');
                 setErrorMsg('');
               }}
-              className="font-bold text-[#374421] hover:underline cursor-pointer"
+              className="font-bold text-[#123d33] hover:underline cursor-pointer"
             >
               Sign In
             </button>
@@ -420,7 +422,7 @@ function CustomerLoginForm() {
                 setMode('signup');
                 setErrorMsg('');
               }}
-              className="font-bold text-[#374421] hover:underline cursor-pointer"
+              className="font-bold text-[#123d33] hover:underline cursor-pointer"
             >
               Create Account
             </button>
@@ -429,7 +431,7 @@ function CustomerLoginForm() {
 
         <p className="text-[11px] text-gray-400">
           Administrator?{' '}
-          <Link href="/admin/login" className="text-[#374421] font-semibold hover:underline">
+          <Link href="/admin/login" className="text-[#123d33] font-semibold hover:underline">
             Staff Portal →
           </Link>
         </p>
@@ -440,8 +442,8 @@ function CustomerLoginForm() {
 
 export default function CustomerLoginPage() {
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
-      <Suspense fallback={<div className="text-xs text-gray-500">Loading form...</div>}>
+    <div className="workspace-theme auth-page">
+      <div className="auth-intro"><span>RAKVIH · MEMBER ACCESS</span><h1>Your savings.<br /><em>All in one place.</em></h1><p>Manage your schemes, follow your contributions, and stay connected to your financial goals.</p><div>Clear records. Thoughtful planning. Shared progress.</div></div><Suspense fallback={<div className="text-xs text-gray-500">Loading form...</div>}>
         <CustomerLoginForm />
       </Suspense>
     </div>

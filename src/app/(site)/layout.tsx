@@ -1,194 +1,238 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useApp } from '@/lib/store';
-import {
-  UserCheck,
-  LogOut,
-  Phone,
-  Mail,
-  Lock
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useApp } from "@/lib/store";
+import { Menu, X } from "lucide-react";
+import { CustomerAuthModal } from "@/components/CustomerAuthModal";
 
-import { CustomerAuthModal } from '@/components/CustomerAuthModal';
-
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+export default function SiteLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { customerUser, customerLogout, openAuthModal } = useApp();
-
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = menuDialog.current;
+    if (!dialog) return;
+    if (!menuOpen) {
+      if (dialog.open) dialog.close();
+      return;
+    }
+    if (!dialog.open) dialog.showModal();
+    const bodyOverflow = document.body.style.overflow;
+    const rootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    const desktop = window.matchMedia("(min-width: 1101px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMenuOpen(false);
+    };
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.documentElement.style.overflow = rootOverflow;
+      desktop.removeEventListener("change", closeOnDesktop);
+    };
+  }, [menuOpen]);
+  const links = [
+    ["Chit schemes", "/#schemes"],
+    ["How it works", "/#how-it-works"],
+    ["Savings calculator", "/#calculator"],
+    ["About us", "/#about"],
+  ];
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
-      {/* Global Customer Auth Popup */}
+    <div className="premium-site">
       <CustomerAuthModal />
-
-      {/* Public Site Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo & Company Name */}
-            <Link href="/" className="flex items-center space-x-3 group">
-              <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-gray-100 p-0.5 group-hover:scale-105 transition-transform bg-white">
-                <Image
-                  src="/logo.png"
-                  alt="RAKVIH Solutions"
-                  width={40}
-                  height={40}
-                  className="object-contain"
-                  priority
-                />
-              </div>
-              <div>
-                <span className="font-extrabold text-base sm:text-lg text-[#374421] tracking-wide block leading-none">
-                  RAKVIH
-                </span>
-                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider block">
-                  Solutions Private Limited
-                </span>
-              </div>
-            </Link>
-
-            {/* Nav Links */}
-            <nav className="hidden md:flex items-center space-x-6 text-xs font-semibold text-gray-600">
-              <Link
-                href="/"
-                className={`hover:text-[#4d5d30] transition-colors ${pathname === '/' ? 'text-[#4d5d30] font-bold' : ''}`}
-              >
-                Home
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <div className="announcement">
+        A little discipline today. A world of possibilities tomorrow.{" "}
+        <span>Discover a better way to save</span>
+      </div>
+      <header className="site-header">
+        <div className="site-container header-inner">
+          <Link href="/" className="brand" aria-label="RAKVIH home">
+            <Image src="/logo-transparent.png" alt="RAKVIH" width={132} height={132} priority />
+          </Link>
+          <nav className="desktop-nav" aria-label="Main navigation">
+            {links.map(([label, href]) => (
+              <Link key={href} href={href}>
+                {label}
               </Link>
-              <Link href="/#schemes" className="hover:text-[#4d5d30] transition-colors">
-                Chit Schemes
-              </Link>
-              <Link href="/#calculator" className="hover:text-[#4d5d30] transition-colors">
-                Savings Calculator
-              </Link>
-              <Link href="/#about" className="hover:text-[#4d5d30] transition-colors">
-                About & Compliance
-              </Link>
-            </nav>
-
-            {/* Customer Authentication & Portal Action */}
-            <div className="flex items-center space-x-3">
-              {customerUser ? (
-                <div className="flex items-center space-x-2">
-                  <Link
-                    href="/portal"
-                    className="bg-[#4d5d30] text-white hover:bg-[#374421] text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm flex items-center space-x-1.5"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>My Customer Portal</span>
-                  </Link>
-
-                  <button
-                    onClick={customerLogout}
-                    title="Sign Out"
-                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => openAuthModal('signin')}
-                    className="text-xs font-bold text-gray-700 hover:text-[#4d5d30] px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    onClick={() => openAuthModal('signup')}
-                    className="bg-[#4d5d30] text-white hover:bg-[#374421] text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm flex items-center space-x-1.5 cursor-pointer hover:scale-105"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>Create Account</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            ))}
+          </nav>
+          <div className="header-actions">
+            {customerUser ? (
+              <>
+                <Link className="admin-header-link" href="/admin/login">
+                  Admin portal
+                </Link>
+                <Link className="button button-small" href="/portal">
+                  My account
+                </Link>
+                <button className="signin signout-link" onClick={customerLogout}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link className="admin-header-link" href="/admin/login">
+                  Admin portal
+                </Link>
+                <button
+                  className="signup-header-link"
+                  onClick={() => openAuthModal("signup")}
+                >
+                  Sign up
+                </button>
+                <button
+                  className="button button-small"
+                  onClick={() => openAuthModal("signup")}
+                >
+                  Get started
+                </button>
+              </>
+            )}
+            <button
+              className="icon-button mobile-toggle"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              aria-haspopup="dialog"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {menuOpen ? <X /> : <Menu />}
+            </button>
           </div>
         </div>
       </header>
-
-      {/* Main Page Content */}
-      <main className="flex-1">{children}</main>
-
-      {/* Public Footer */}
-      <footer className="bg-[#2d381e] text-white py-12 border-t border-emerald-950 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            {/* Brand column */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded bg-amber-400 flex items-center justify-center font-bold text-[#2d381e]">
-                  R
-                </div>
-                <span className="font-bold text-lg text-white">RAKVIH SOLUTIONS</span>
-              </div>
-              <p className="text-xs text-gray-300 leading-relaxed">
-                RAKVIH Solutions Private Limited. Next-generation digital chitty management platform providing transparent, regulated savings and emergency liquidity.
-              </p>
-              <div className="text-[10px] text-amber-400 bg-amber-950/60 border border-amber-800 px-2.5 py-1 rounded-md inline-block">
-                Registered under Chit Funds Act, 1982
-              </div>
-            </div>
-
-            {/* Quick links */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">
-                Quick Navigation
-              </h4>
-              <ul className="space-y-2 text-xs text-gray-300">
-                <li><Link href="/" className="hover:text-white transition-colors">Home Page</Link></li>
-                <li><Link href="/#schemes" className="hover:text-white transition-colors">Available Schemes</Link></li>
-                <li><Link href="/#calculator" className="hover:text-white transition-colors">Financial Calculator</Link></li>
-                <li><Link href="/login" className="hover:text-white transition-colors">Customer Login / Register</Link></li>
-              </ul>
-            </div>
-
-            {/* Customer Support */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">
-                Customer Support
-              </h4>
-              <ul className="space-y-2 text-xs text-gray-300">
-                <li className="flex items-center space-x-2">
-                  <Phone className="w-3.5 h-3.5 text-amber-400" />
-                  <span>+91 80 4000 1234</span>
-                </li>
-                <li className="flex items-center space-x-2">
-                  <Mail className="w-3.5 h-3.5 text-amber-400" />
-                  <span>support@rakvih.com</span>
-                </li>
-                <li><span>Bangalore, Karnataka, India</span></li>
-              </ul>
-            </div>
-
-            {/* Regulatory & Staff Access */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">
-                Security & Staff
-              </h4>
-              <p className="text-xs text-gray-300 mb-3">
-                256-bit SSL encrypted financial transactions with Supabase Row Level Security.
-              </p>
-              <Link
-                href="/admin/login"
-                className="inline-flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Admin Management Portal</span>
+      <dialog
+        ref={menuDialog}
+        id="mobile-menu"
+        className="mobile-menu-dialog"
+        aria-label="Navigation menu"
+        onCancel={() => setMenuOpen(false)}
+        onClose={() => setMenuOpen(false)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setMenuOpen(false);
+        }}
+      >
+        <div className="mobile-menu-panel">
+          <div className="mobile-menu-heading">
+            <Link href="/" aria-label="RAKVIH home" onClick={() => setMenuOpen(false)}>
+              <Image src="/logo-transparent.png" alt="RAKVIH" width={82} height={82} />
+            </Link>
+            <button className="mobile-menu-close" aria-label="Close menu" onClick={() => setMenuOpen(false)} autoFocus>
+              <X size={22} />
+            </button>
+          </div>
+          <span className="mobile-menu-label">EXPLORE RAKVIH</span>
+          <nav className="mobile-menu-links" aria-label="Mobile navigation">
+            {links.map(([label, href]) => (
+              <Link key={href} href={href} onClick={() => setMenuOpen(false)}>
+                {label}
               </Link>
+            ))}
+          </nav>
+          <div className="mobile-menu-account">
+            {customerUser ? (
+              <Link className="mobile-menu-primary" href="/portal" onClick={() => setMenuOpen(false)}>My account</Link>
+            ) : (
+              <div className="mobile-menu-auth">
+                <button onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>Sign up</button>
+                <button className="mobile-menu-primary" onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>Get started</button>
+              </div>
+            )}
+            <Link className="mobile-menu-admin" href="/admin/login" onClick={() => setMenuOpen(false)}>
+              Admin portal
+            </Link>
+            {customerUser && (
+              <button
+                className="mobile-menu-signout"
+                onClick={() => {
+                  setMenuOpen(false);
+                  customerLogout();
+                }}
+              >
+                Sign out
+              </button>
+            )}
+          </div>
+        </div>
+      </dialog>
+      <main id="main-content">{children}</main>
+      <footer className="site-footer">
+        <div className="site-container">
+          <div className="footer-top">
+            <div className="footer-brand-col" data-home-reveal="left">
+              <div className="footer-brand-heading">
+                <Link href="/" className="footer-logo" aria-label="RAKVIH home">
+                  <Image src="/logo-transparent.png" alt="RAKVIH" width={150} height={150} />
+                </Link>
+                <p>
+                  Rooted in trust.
+                  <br />
+                  Built for your tomorrow.
+                </p>
+              </div>
+              <p className="footer-company-description">
+                RAKVIH Solutions Private Limited. Next-generation digital chitty
+                management platform providing transparent, regulated savings and
+                emergency liquidity.
+              </p>
+              <span className="footer-registration">Registered under Chit Funds Act, 1982</span>
+            </div>
+            <div className="footer-navigation-col" data-home-reveal="up">
+              <div className="footer-link-col">
+                <span className="eyebrow">EXPLORE</span>
+                <Link href="/#schemes">Chit schemes</Link>
+                <Link href="/#calculator">Savings calculator</Link>
+                <Link href="/#how-it-works">How it works</Link>
+              </div>
+              <div className="footer-link-col">
+                <span className="eyebrow">YOUR RAKVIH</span>
+                <Link href="/portal">Member portal</Link>
+                <Link href="/login">Sign in / Register</Link>
+                <Link href="/admin/login">Staff access</Link>
+              </div>
+            </div>
+            <div className="footer-contact-col" data-home-reveal="up">
+              <span className="eyebrow">LET’S TALK</span>
+              <a href="mailto:support@rakvih.com">
+                support@rakvih.com
+              </a>
+              <a href="tel:+918040001234">+91 80 4000 1234</a>
+              <p>
+                Bangalore, Karnataka
+                <br />
+                India
+              </p>
+            </div>
+            <div className="footer-security-col" data-home-reveal="right">
+              <span className="eyebrow">SECURITY &amp; STAFF</span>
+              <p>256-bit SSL encrypted financial transactions with Supabase Row Level Security.</p>
+              <Link href="/admin/login">Admin Management Portal</Link>
             </div>
           </div>
-
-          <div className="pt-8 border-t border-gray-700/60 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-400">
-            <p>© 2026 RAKVIH Solutions Private Limited. All Rights Reserved.</p>
-            <div className="flex space-x-6 mt-4 sm:mt-0">
-              <span>Privacy Policy</span>
-              <span>Terms & Conditions</span>
-              <span>Compliance Standards</span>
+          <div className="footer-bottom">
+            <span className="footer-copyright">© 2026 RAKVIH Solutions Private Limited. All Rights Reserved.</span>
+            <div className="footer-bottom-right">
+              <div className="footer-legal">
+                <span>Privacy Policy</span>
+                <span>Terms &amp; Conditions</span>
+                <span>Compliance Standards</span>
+              </div>
+              <div className="footer-credit">
+                Designed and developed by{" "}
+                <a href="https://rakvih.in" target="_blank" rel="noopener noreferrer">
+                  RAKVIH
+                </a>
+              </div>
             </div>
           </div>
         </div>

@@ -28,7 +28,7 @@ export default function AdminSubscribersPage() {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-[#374421] text-white hover:bg-[#2d381e] font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm flex items-center space-x-1.5"
+          className="bg-[#123d33] text-white hover:bg-[#0b2e26] font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm flex items-center space-x-1.5"
         >
           <UserPlus className="w-4 h-4" />
           <span>Enroll Subscriber</span>
@@ -36,13 +36,13 @@ export default function AdminSubscribersPage() {
       </div>
 
       {subscribers.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <Users className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No Subscribers Enrolled</h4>
           <p className="text-xs">Members who enroll online or are added by admin will appear here.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-xs">
+        <div className="bg-white rounded-[20px] border border-gray-200 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-100 text-gray-700 font-bold">
@@ -63,7 +63,7 @@ export default function AdminSubscribersPage() {
                     <tr key={sub.id} className="hover:bg-gray-50">
                       <td className="p-4 font-bold text-gray-900">{sub.userName}</td>
                       <td className="p-4 font-semibold text-gray-700">{grp?.groupCode || 'Scheme'}</td>
-                      <td className="p-4 font-bold text-[#4d5d30]">Seat #{sub.seatNumber}</td>
+                      <td className="p-4 font-bold text-[#123d33]">Seat #{sub.seatNumber}</td>
                       <td className="p-4 text-gray-500">{sub.joinedDate}</td>
                       <td className="p-4">
                         <span
@@ -92,7 +92,7 @@ export default function AdminSubscribersPage() {
       {/* ENROLL MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6">
+          <div className="bg-white rounded-[20px] p-6 sm:p-8 max-w-md w-full space-y-6">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <h3 className="font-bold text-lg text-gray-900">Enroll Member into Scheme</h3>
               <button onClick={() => setShowAddModal(false)} className="text-gray-400 font-bold">
@@ -131,7 +131,7 @@ export default function AdminSubscribersPage() {
 
               <button
                 type="submit"
-                className="w-full bg-[#374421] text-white hover:bg-[#2d381e] font-bold text-sm py-3.5 rounded-2xl shadow-lg transition-all"
+                className="w-full bg-[#123d33] text-white hover:bg-[#0b2e26] font-bold text-sm py-3.5 rounded-2xl shadow-lg transition-all"
               >
                 Assign Seat & Enroll Member
               </button>

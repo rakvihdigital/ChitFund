@@ -30,7 +30,7 @@ export default function AdminAuctionsPage() {
         </div>
         <button
           onClick={() => setShowScheduleModal(true)}
-          className="bg-[#374421] text-white hover:bg-[#2d381e] font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm flex items-center space-x-1.5"
+          className="bg-[#123d33] text-white hover:bg-[#0b2e26] font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm flex items-center space-x-1.5"
         >
           <Plus className="w-4 h-4" />
           <span>Schedule Auction</span>
@@ -38,15 +38,15 @@ export default function AdminAuctionsPage() {
       </div>
 
       {auctions.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <Award className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No Auctions Scheduled</h4>
-          <p className="text-xs">Click 'Schedule Auction' to plan a monthly auction for an enrolled chit group.</p>
+          <p className="text-xs">Click &apos;Schedule Auction&apos; to plan a monthly auction for an enrolled chit group.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {auctions.map((auc) => (
-            <div key={auc.id} className="bg-white rounded-3xl border border-gray-200 p-6 space-y-4 shadow-xs text-xs">
+            <div key={auc.id} className="bg-white rounded-[20px] border border-gray-200 p-6 space-y-4 shadow-xs text-xs">
               <div className="flex justify-between items-start">
                 <div>
                   <span className="font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded text-[11px]">
@@ -77,11 +77,11 @@ export default function AdminAuctionsPage() {
                 </div>
                 <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
                   <span className="text-emerald-700 block text-[10px] font-bold">Dividend Discount / Member</span>
-                  <span className="font-extrabold text-emerald-800 text-base">₹{auc.dividendPerMember.toLocaleString('en-IN')}</span>
+                  <span className="font-semibold text-emerald-800 text-base">₹{auc.dividendPerMember.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
                   <span className="text-amber-800 block text-[10px] font-bold">Winner Take-Home Prize (&quot;My Amount&quot;)</span>
-                  <span className="font-extrabold text-[#374421] text-base">₹{auc.netPrizeAmount.toLocaleString('en-IN')}</span>
+                  <span className="font-semibold text-[#123d33] text-base">₹{auc.netPrizeAmount.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -110,7 +110,7 @@ export default function AdminAuctionsPage() {
       {/* SCHEDULE MODAL */}
       {showScheduleModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6">
+          <div className="bg-white rounded-[20px] p-6 sm:p-8 max-w-md w-full space-y-6">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <h3 className="font-bold text-lg text-gray-900">Schedule e-Auction</h3>
               <button onClick={() => setShowScheduleModal(false)} className="text-gray-400 font-bold">
@@ -162,7 +162,7 @@ export default function AdminAuctionsPage() {
 
               <button
                 type="submit"
-                className="w-full bg-[#374421] text-white hover:bg-[#2d381e] font-bold text-sm py-3.5 rounded-2xl shadow-lg transition-all"
+                className="w-full bg-[#123d33] text-white hover:bg-[#0b2e26] font-bold text-sm py-3.5 rounded-2xl shadow-lg transition-all"
               >
                 Confirm & Open Bidding Room
               </button>

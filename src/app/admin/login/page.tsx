@@ -39,12 +39,12 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1b2212] flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl p-8 space-y-6 shadow-2xl text-gray-900 border border-gray-100">
+    <div className="auth-page staff-auth-page"><div className="auth-intro"><span>RAKVIH · MANAGEMENT SUITE</span><h1>A clearer view.<br /><em>At every step.</em></h1><p>Your workspace for schemes, subscriber records, collections, and approvals.</p><div>One connected workspace for your team.</div></div>
+      <div className="auth-card max-w-md w-full bg-white rounded-[20px] p-8 space-y-6 shadow-lg text-gray-900 border border-gray-100">
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 mx-auto relative rounded-2xl bg-gray-50 p-1.5 border border-gray-100 shadow-inner flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto relative rounded-2xl p-1.5 flex items-center justify-center">
             <Image
-              src="/logo.png"
+              src="/logo-transparent.png"
               alt="RAKVIH Solutions"
               width={56}
               height={56}
@@ -52,11 +52,11 @@ export default function AdminLoginPage() {
               priority
             />
           </div>
-          <div className="inline-flex items-center space-x-1.5 bg-amber-100 text-amber-900 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+          <div className="inline-flex items-center space-x-1.5 bg-amber-100 text-amber-900 px-3 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider">
             <Shield className="w-3.5 h-3.5" />
             <span>Administrative Gateway</span>
           </div>
-          <h2 className="text-2xl font-black text-gray-900">Admin Staff Login</h2>
+          <h2 className="text-2xl font-semibold text-gray-900">Admin Staff Login</h2>
           <p className="text-xs text-gray-500">
             Restricted access for RAKVIH Solutions chit fund officers & managers
           </p>
@@ -79,7 +79,7 @@ export default function AdminLoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@rakvih.com"
-                className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#374421]"
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#123d33]"
                 required
               />
             </div>
@@ -94,7 +94,7 @@ export default function AdminLoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#374421]"
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#123d33]"
                 required
               />
             </div>
@@ -109,7 +109,7 @@ export default function AdminLoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-[#374421] text-white hover:bg-[#2d381e] font-bold py-3.5 rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-1.5"
+            className="w-full bg-[#123d33] text-white hover:bg-[#0b2e26] font-bold py-3.5 rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-1.5"
           >
             <span>{isLoading ? 'Verifying Authorization...' : 'Sign In to Admin Console'}</span>
             <ArrowRight className="w-4 h-4" />

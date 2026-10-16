@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/lib/store';
-import { FileCheck, AlertCircle } from 'lucide-react';
+import { FileCheck } from 'lucide-react';
 
 export default function AdminKYCPage() {
   const { kycList, approveKYC, rejectKYC } = useApp();
@@ -28,7 +28,7 @@ export default function AdminKYCPage() {
       </div>
 
       {kycList.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <FileCheck className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No KYC Applications in Queue</h4>
           <p className="text-xs">When customers submit their KYC details, they will appear here for officer approval.</p>
@@ -38,7 +38,7 @@ export default function AdminKYCPage() {
           {kycList.map((k) => (
             <div
               key={k.id}
-              className="bg-white p-6 rounded-3xl border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs"
+              className="bg-white p-6 rounded-[20px] border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs"
             >
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center space-x-2">
@@ -97,7 +97,7 @@ export default function AdminKYCPage() {
       {/* REJECT MODAL */}
       {rejectId && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4">
+          <div className="bg-white rounded-[20px] p-6 sm:p-8 max-w-md w-full space-y-4">
             <h3 className="font-bold text-lg text-gray-900">Reject KYC Application</h3>
             <p className="text-xs text-gray-500">Provide reason for rejection to notify customer.</p>
 

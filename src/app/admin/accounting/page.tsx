@@ -20,27 +20,27 @@ export default function AdminAccountingPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xs space-y-1">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">
           <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Total Credit Inflow</span>
-          <span className="text-3xl font-black text-emerald-700">₹{totalCredit.toLocaleString('en-IN')}</span>
+          <span className="text-3xl font-semibold text-emerald-700">₹{totalCredit.toLocaleString('en-IN')}</span>
           <span className="text-[11px] text-gray-500 block">Collections & Commission credit</span>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xs space-y-1">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">
           <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Total Debit Outflow</span>
-          <span className="text-3xl font-black text-red-600">₹{totalDebit.toLocaleString('en-IN')}</span>
+          <span className="text-3xl font-semibold text-red-600">₹{totalDebit.toLocaleString('en-IN')}</span>
           <span className="text-[11px] text-gray-500 block">Prize disbursements & settlements</span>
         </div>
       </div>
 
       {ledger.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <BookOpen className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No Ledger Entries Recorded</h4>
           <p className="text-xs">Accounting journal entries will be generated automatically as collections occur.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-xs">
+        <div className="bg-white rounded-[20px] border border-gray-200 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-100 text-gray-700 font-bold">

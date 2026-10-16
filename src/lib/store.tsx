@@ -22,6 +22,7 @@ import {
 
 interface AppContextType {
   // Auth state
+  isLoaded: boolean;
   customerUser: UserProfile | null;
   adminUser: UserProfile | null;
   authModalOpen: boolean;
@@ -783,6 +784,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        isLoaded,
         customerUser,
         adminUser,
         authModalOpen,

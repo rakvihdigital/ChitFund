@@ -1,228 +1,52 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/lib/store';
-import {
-  Shield,
-  LayoutDashboard,
-  Layers,
-  Users,
-  FileCheck,
-  CreditCard,
-  Award,
-  Lock,
-  BookOpen,
-  History,
-  LogOut,
-  ExternalLink
-} from 'lucide-react';
+import { LayoutDashboard, Layers, Users, FileCheck, CreditCard, Award, Lock, BookOpen, History, LogOut, ArrowUpRight, Menu, X, ShieldCheck } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { adminUser, adminLogout, kycList, payouts } = useApp();
-
+  const { isLoaded, adminUser, adminLogout, kycList, payouts } = useApp();
+  const [menuOpen, setMenuOpen] = useState(false);
   const isLoginPage = pathname === '/admin/login';
-
-  // Gate admin routes except login
+  React.useEffect(() => { if (isLoaded && !adminUser && !isLoginPage) router.push('/admin/login'); }, [isLoaded, adminUser, isLoginPage, router]);
   React.useEffect(() => {
-    if (!adminUser && !isLoginPage) {
-      router.push('/admin/login');
-    }
-  }, [adminUser, isLoginPage, router]);
-
-  if (isLoginPage) {
-    return <div className="min-h-screen bg-gray-900 text-white">{children}</div>;
-  }
-
-  const pendingKYCCount = kycList.filter((k) => k.status === 'PENDING_APPROVAL').length;
-  const pendingPayoutCount = payouts.filter((p) => p.status === 'GUARANTOR_PENDING' || p.status === 'MAKER_APPROVED').length;
-
+    if (!menuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => { document.body.style.overflow = previous; window.removeEventListener('keydown', close); };
+  }, [menuOpen]);
+  if (isLoginPage) return <div className="workspace-theme">{children}</div>;
   const navItems = [
     { href: '/admin', label: 'Dashboard Overview', icon: LayoutDashboard },
     { href: '/admin/groups', label: 'Chit Schemes', icon: Layers },
     { href: '/admin/subscribers', label: 'Subscribers & Seats', icon: Users },
-    {
-      href: '/admin/kyc',
-      label: 'KYC Approvals',
-      icon: FileCheck,
-      badge: pendingKYCCount > 0 ? `${pendingKYCCount} NEW` : null,
-      badgeColor: 'bg-amber-500 text-gray-950 font-black'
-    },
+    { href: '/admin/kyc', label: 'KYC Approvals', icon: FileCheck, count: kycList.filter(k => k.status === 'PENDING_APPROVAL').length },
     { href: '/admin/collections', label: 'Collections & Dues', icon: CreditCard },
     { href: '/admin/auctions', label: 'e-Auctions & Draws', icon: Award },
-    {
-      href: '/admin/payouts',
-      label: 'Maker-Checker Payouts',
-      icon: Lock,
-      badge: pendingPayoutCount > 0 ? `${pendingPayoutCount} ACTION` : null,
-      badgeColor: 'bg-blue-500 text-white font-bold'
-    },
+    { href: '/admin/payouts', label: 'Maker-Checker Payouts', icon: Lock, count: payouts.filter(p => p.status === 'GUARANTOR_PENDING' || p.status === 'MAKER_APPROVED').length },
     { href: '/admin/accounting', label: 'Ledgers & Accounts', icon: BookOpen },
-    { href: '/admin/audit', label: 'Audit Trail', icon: History }
+    { href: '/admin/audit', label: 'Audit Trail', icon: History },
   ];
-
-  return (
-    <div className="min-h-screen flex bg-[#f7f9f4] text-gray-900">
-      {/* STRICT STICKY SIDEBAR: Stays locked in place on all scrolls */}
-      <aside className="w-68 bg-[#182010] text-white flex flex-col justify-between border-r border-[#263319] flex-shrink-0 sticky top-0 h-screen overflow-y-auto z-40 shadow-2xl">
-        <div className="flex flex-col">
-          {/* Admin Header with Official Logo */}
-          <div className="p-5 border-b border-[#253218] bg-[#141a0d]">
-            <div className="flex items-center space-x-3">
-              <div className="relative w-11 h-11 bg-white p-1 border-2 border-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
-                <Image
-                  src="/logo.png"
-                  alt="RAKVIH"
-                  width={40}
-                  height={40}
-                  className="object-contain"
-                  priority
-                />
-              </div>
-              <div className="overflow-hidden">
-                <span className="font-black text-sm text-white tracking-wider block leading-tight uppercase truncate">
-                  RAKVIH ADMIN
-                </span>
-                <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest block leading-none mt-0.5">
-                  Management Console
-                </span>
-              </div>
-            </div>
-
-            {/* Live System Indicator */}
-            <div className="mt-3 pt-2.5 border-t border-[#232e16] flex items-center justify-between text-[10px]">
-              <span className="flex items-center space-x-1.5 text-emerald-400 font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>SYSTEM ACTIVE</span>
-              </span>
-              <span className="text-gray-400 font-mono text-[9px] uppercase tracking-wider">
-                V2.4 PROD
-              </span>
-            </div>
-          </div>
-
-          {/* Navigation Section */}
-          <div className="px-3 py-4">
-            <span className="px-3 text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
-              Core Modules
-            </span>
-            <nav className="space-y-1 text-xs">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center justify-between px-3.5 py-2.5 transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-[#374421] text-white font-extrabold shadow-md border-l-4 border-amber-400'
-                        : 'text-gray-300 hover:text-white hover:bg-white/5 border-l-4 border-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-gray-400'}`} />
-                      <span className="tracking-wide">{item.label}</span>
-                    </div>
-                    {item.badge && (
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 tracking-wider uppercase ${item.badgeColor}`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        {/* Admin User Section & Quick Controls */}
-        <div className="p-4 border-t border-[#253218] bg-[#141a0d] space-y-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 bg-amber-400 text-gray-950 font-black flex items-center justify-center text-sm shadow-sm">
-              {adminUser?.fullName?.charAt(0) || 'A'}
-            </div>
-            <div className="overflow-hidden flex-1">
-              <p className="text-xs font-bold text-white truncate">
-                {adminUser?.fullName || 'Administrator'}
-              </p>
-              <p className="text-[10px] text-gray-400 truncate">
-                {adminUser?.email || 'admin@rakvih.com'}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
-            <button
-              onClick={adminLogout}
-              className="bg-white/10 hover:bg-red-700 text-gray-200 hover:text-white font-bold py-2 px-3 text-[11px] transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Log Out</span>
-            </button>
-            <Link
-              href="/"
-              target="_blank"
-              title="Open Public Site"
-              className="bg-white/10 hover:bg-[#374421] text-gray-200 hover:text-white font-bold py-2 px-3 text-[11px] transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Site</span>
-            </Link>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Administrative Workspace */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Sticky Top Bar */}
-        <header className="bg-white/95 backdrop-blur-md border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-30 shadow-xs">
-          <div>
-            <div className="flex items-center space-x-2 text-[11px] text-gray-400 uppercase tracking-wider font-semibold">
-              <Link href="/admin" className="hover:text-gray-700">Admin</Link>
-              <span>/</span>
-              <span className="text-[#374421] font-bold">
-                {pathname === '/admin' ? 'Dashboard' : pathname.replace('/admin/', '').replace('-', ' ')}
-              </span>
-            </div>
-            <h1 className="text-lg font-black text-gray-900 capitalize tracking-tight mt-0.5">
-              {pathname === '/admin' ? 'Executive Overview' : pathname.replace('/admin/', '').replace('-', ' ')}
-            </h1>
-          </div>
-
-          <div className="flex items-center space-x-4 text-xs">
-            <div className="bg-[#f0f4e8] border border-[#d3dfc3] px-3.5 py-1.5 text-[#374421] font-bold flex items-center space-x-2">
-              <Shield className="w-3.5 h-3.5 text-[#374421]" />
-              <span>Govt Chit Funds Act 1982 Compliant</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="p-8 flex-1 relative">
-          {!adminUser && (
-            <div className="absolute inset-0 bg-gray-100/95 backdrop-blur-xs z-30 flex items-center justify-center p-4">
-              <div className="bg-white p-8 border-2 border-[#374421] text-center space-y-4 max-w-sm shadow-2xl">
-                <Shield className="w-12 h-12 text-amber-500 mx-auto animate-pulse" />
-                <h3 className="font-black text-base text-gray-900 uppercase">Admin Authorization Required</h3>
-                <p className="text-xs text-gray-500">Redirecting to administrator authentication gateway...</p>
-                <Link
-                  href="/admin/login"
-                  className="inline-block bg-[#374421] text-white font-bold text-xs px-5 py-2.5 uppercase tracking-wider shadow-md hover:bg-[#283218]"
-                >
-                  Go to Admin Login
-                </Link>
-              </div>
-            </div>
-          )}
-          {children}
-        </main>
-      </div>
+  const current = navItems.find(item => item.href === pathname);
+  return <div className="workspace-theme admin-shell">
+    <a href="#admin-content" className="skip-link">Skip to workspace</a>
+    {menuOpen && <button className="admin-menu-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
+    <aside id="admin-navigation" className={`admin-sidebar ${menuOpen ? 'is-open' : ''}`}>
+      <div className="admin-brand"><Image src="/logo-transparent.png" alt="" width={40} height={40} /><div>RAKVIH ADMIN<small>Management Console</small></div><button className="admin-menu-toggle" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X size={20} /></button></div>
+      <div className="admin-system-status"><span><span className="admin-status-dot" /> SYSTEM ACTIVE</span><span>V2.4 PROD</span></div>
+      <div className="admin-nav-label">CORE MODULES</div>
+      <nav aria-label="Administration">{navItems.map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} onClick={() => setMenuOpen(false)}><item.icon size={18} /><span>{item.label}</span>{!!item.count && <b>{item.count}</b>}</Link>)}</nav>
+      <div className="admin-account"><div className="admin-account-person"><span>{adminUser?.fullName?.charAt(0) || 'A'}</span><div><strong>{adminUser?.fullName || 'Administrator'}</strong><small>{adminUser?.email}</small></div></div><div className="admin-account-actions"><button onClick={adminLogout}><LogOut size={15} /> Sign out</button><Link href="/"><ArrowUpRight size={16} /> Website</Link></div></div>
+    </aside>
+    <div className="admin-workspace"><header className="admin-topbar"><div className="admin-page-title"><button className="admin-menu-toggle" aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}><Menu size={22} /></button><div><span>ADMIN / {current?.label.toUpperCase()}</span><h1>{pathname === '/admin' ? 'Executive Overview' : current?.label || 'Workspace'}</h1></div></div><span className="workspace-badge"><ShieldCheck size={16} /> Govt Chit Funds Act 1982 Compliant</span></header>
+      <main id="admin-content" className="admin-content">{adminUser ? children : <div className="workspace-loading"><ShieldCheck size={28} /><h2>{isLoaded ? 'Admin Authorization Required' : 'Preparing workspace'}</h2><p>{isLoaded ? 'Redirecting to administrator authentication gateway...' : 'Loading your account and modules...'}</p>{isLoaded && <Link href="/admin/login">Go to Admin Login</Link>}</div>}</main>
     </div>
-  );
+  </div>;
 }

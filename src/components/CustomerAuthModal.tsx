@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/store';
@@ -18,10 +18,15 @@ import {
 } from 'lucide-react';
 
 export const CustomerAuthModal: React.FC = () => {
+  const { authModalOpen, authModalMode } = useApp();
+  return authModalOpen ? <CustomerAuthContent key={authModalMode} /> : null;
+};
+
+const CustomerAuthContent: React.FC = () => {
   const router = useRouter();
   const { authModalOpen, authModalMode, closeAuthModal, customerSignUp, customerLogin } = useApp();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signup');
+  const [mode, setMode] = useState<'signin' | 'signup'>(authModalMode || 'signup');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -34,23 +39,24 @@ export const CustomerAuthModal: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (authModalOpen) {
-      setMode(authModalMode || 'signup');
-      setErrorMsg('');
-      setSuccessMsg('');
-    }
-  }, [authModalOpen, authModalMode]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && authModalOpen) {
-        closeAuthModal();
-      }
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector<HTMLElement>('input, button')?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeAuthModal();
+      if (event.key !== 'Tab') return;
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href], select, textarea') || []);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [authModalOpen, closeAuthModal]);
+    return () => { document.body.style.overflow = previousOverflow; previousFocus?.focus(); window.removeEventListener('keydown', handleKeyDown); };
+  }, [closeAuthModal]);
 
   if (!authModalOpen) return null;
 
@@ -141,16 +147,18 @@ export const CustomerAuthModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+      className="workspace-theme auth-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) closeAuthModal();
       }}
     >
       {/* CLEAN NORMAL RECTANGULAR FORM CARD */}
       <div
-        className="relative w-full max-w-[520px] bg-white rounded-xl shadow-2xl border border-gray-200 p-6 sm:p-8 animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="auth-card auth-modal-card relative w-full max-w-[520px] bg-white rounded-xl shadow-lg border border-gray-200 p-6 sm:p-8 animate-in zoom-in-95 duration-200 overflow-hidden"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={mode === 'signup' ? 'Create your account' : 'Sign in to your account'}
       >
         {/* Close Button */}
         <button
@@ -163,9 +171,9 @@ export const CustomerAuthModal: React.FC = () => {
 
         {/* Brand Header */}
         <div className="flex items-center space-x-3 mb-5">
-          <div className="w-11 h-11 rounded-lg bg-gray-50 border border-gray-200 p-1 flex items-center justify-center flex-shrink-0">
+          <div className="w-11 h-11 rounded-lg p-1 flex items-center justify-center flex-shrink-0">
             <Image
-              src="/logo.png"
+              src="/logo-transparent.png"
               alt="RAKVIH"
               width={36}
               height={36}
@@ -174,7 +182,7 @@ export const CustomerAuthModal: React.FC = () => {
             />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-gray-900 leading-tight">
+            <h3 className="font-semibold text-base text-gray-900 leading-tight">
               RAKVIH SOLUTIONS
             </h3>
             <p className="text-xs text-gray-500">
@@ -261,7 +269,7 @@ export const CustomerAuthModal: React.FC = () => {
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. Ramesh Kumar"
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                       required
                     />
                   </div>
@@ -281,7 +289,7 @@ export const CustomerAuthModal: React.FC = () => {
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="9876543210"
                       maxLength={10}
-                      className="w-full pl-12 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                      className="w-full pl-12 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                       required
                     />
                   </div>
@@ -300,7 +308,7 @@ export const CustomerAuthModal: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@example.com"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                 </div>
@@ -319,12 +327,13 @@ export const CustomerAuthModal: React.FC = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Min 6 characters"
-                      className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                      className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                       className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-700 cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -343,7 +352,7 @@ export const CustomerAuthModal: React.FC = () => {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Re-enter password"
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                       required
                     />
                   </div>
@@ -357,7 +366,7 @@ export const CustomerAuthModal: React.FC = () => {
                   id="normal-form-terms"
                   checked={agreedTerms}
                   onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="mt-0.5 rounded text-[#374421] focus:ring-[#374421] cursor-pointer"
+                  className="mt-0.5 rounded text-[#123d33] focus:ring-[#123d33] cursor-pointer"
                 />
                 <label htmlFor="normal-form-terms" className="cursor-pointer leading-tight">
                   I agree to the <span className="font-semibold text-gray-800">Chit Funds Act, 1982</span> rules and platform privacy terms.
@@ -378,7 +387,7 @@ export const CustomerAuthModal: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="subscriber@example.com"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                 </div>
@@ -404,12 +413,13 @@ export const CustomerAuthModal: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
-                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#374421] focus:ring-1 focus:ring-[#374421] text-gray-900 font-medium"
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                     className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-700 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -423,7 +433,7 @@ export const CustomerAuthModal: React.FC = () => {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded text-[#374421] focus:ring-[#374421]"
+                    className="rounded text-[#123d33] focus:ring-[#123d33]"
                   />
                   <span>Remember me</span>
                 </label>
@@ -439,7 +449,7 @@ export const CustomerAuthModal: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-[#374421] hover:bg-[#283218] text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-3"
+            className="w-full bg-[#123d33] hover:bg-[#283218] text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-3"
           >
             <span>
               {isLoading
@@ -463,7 +473,7 @@ export const CustomerAuthModal: React.FC = () => {
                   setMode('signin');
                   setErrorMsg('');
                 }}
-                className="font-bold text-[#374421] hover:underline cursor-pointer"
+                className="font-bold text-[#123d33] hover:underline cursor-pointer"
               >
                 Sign In
               </button>
@@ -477,7 +487,7 @@ export const CustomerAuthModal: React.FC = () => {
                   setMode('signup');
                   setErrorMsg('');
                 }}
-                className="font-bold text-[#374421] hover:underline cursor-pointer"
+                className="font-bold text-[#123d33] hover:underline cursor-pointer"
               >
                 Create Account
               </button>

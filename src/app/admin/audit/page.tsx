@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useApp } from '@/lib/store';
-import { History, Shield } from 'lucide-react';
+import { History } from 'lucide-react';
 
 export default function AdminAuditPage() {
   const { auditLogs } = useApp();
@@ -17,13 +17,13 @@ export default function AdminAuditPage() {
       </div>
 
       {auditLogs.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-3xl border border-gray-200 text-gray-500 space-y-3">
+        <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
           <History className="w-12 h-12 text-gray-400 mx-auto" />
           <h4 className="font-bold text-base text-gray-800">No Audit Events Logged</h4>
           <p className="text-xs">All administrative actions and customer events will be recorded here.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-xs">
+        <div className="bg-white rounded-[20px] border border-gray-200 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-100 text-gray-700 font-bold">
@@ -46,7 +46,7 @@ export default function AdminAuditPage() {
                         {log.actorRole}
                       </span>
                     </td>
-                    <td className="p-4 font-bold text-[#374421]">{log.action}</td>
+                    <td className="p-4 font-bold text-[#123d33]">{log.action}</td>
                     <td className="p-4 text-gray-500 font-mono text-[11px]">{log.resourceType}</td>
                     <td className="p-4 text-gray-700 max-w-xs truncate">{log.details}</td>
                     <td className="p-4 font-mono text-gray-400 text-[11px]">{log.ipAddress}</td>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/lib/store';
-import { Lock, FileCheck, AlertTriangle } from 'lucide-react';
+import { Lock, FileCheck } from 'lucide-react';
 
 export default function AdminPayoutsPage() {
   const { payouts, makerApprovePayout, checkerReleasePayout } = useApp();
@@ -27,7 +27,7 @@ export default function AdminPayoutsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* STEP 1: MAKER QUEUE */}
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 space-y-4 shadow-xs">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 space-y-4 shadow-xs">
           <div className="flex items-center space-x-2 border-b border-gray-100 pb-3">
             <div className="p-2 bg-amber-50 rounded-xl text-amber-700">
               <FileCheck className="w-5 h-5" />
@@ -46,7 +46,7 @@ export default function AdminPayoutsPage() {
                 <div key={p.id} className="p-5 bg-amber-50/60 rounded-2xl border border-amber-200 text-xs space-y-3">
                   <div className="flex justify-between font-bold text-amber-900">
                     <span>Winner: {p.winnerName}</span>
-                    <span className="text-sm font-extrabold">₹{p.prizeAmount.toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-semibold">₹{p.prizeAmount.toLocaleString('en-IN')}</span>
                   </div>
                   <p className="text-gray-600">Scheme: {p.groupCode} • Month #{p.monthNumber}</p>
 
@@ -77,7 +77,7 @@ export default function AdminPayoutsPage() {
         </div>
 
         {/* STEP 2: CHECKER QUEUE */}
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 space-y-4 shadow-xs">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 space-y-4 shadow-xs">
           <div className="flex items-center space-x-2 border-b border-gray-100 pb-3">
             <div className="p-2 bg-emerald-50 rounded-xl text-emerald-700">
               <Lock className="w-5 h-5" />
@@ -96,7 +96,7 @@ export default function AdminPayoutsPage() {
                 <div key={p.id} className="p-5 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-xs space-y-3">
                   <div className="flex justify-between font-bold text-emerald-900">
                     <span>Passed Maker: {p.winnerName}</span>
-                    <span className="text-sm font-extrabold">₹{p.prizeAmount.toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-semibold">₹{p.prizeAmount.toLocaleString('en-IN')}</span>
                   </div>
                   <p className="text-gray-600">Maker Notes: {p.makerNotes}</p>
 
@@ -116,7 +116,7 @@ export default function AdminPayoutsPage() {
                       checkerReleasePayout(p.id, checkerNotes || 'Released via Bank Transfer');
                       setCheckerNotes('');
                     }}
-                    className="w-full bg-[#374421] hover:bg-[#2d381e] text-white font-bold py-2.5 rounded-xl transition-all shadow-xs"
+                    className="w-full bg-[#123d33] hover:bg-[#0b2e26] text-white font-bold py-2.5 rounded-xl transition-all shadow-xs"
                   >
                     Authorize & Disburse Bank Payout
                   </button>
@@ -129,7 +129,7 @@ export default function AdminPayoutsPage() {
 
       {/* Disbursed History */}
       {released.length > 0 && (
-        <div className="bg-white p-6 rounded-3xl border border-gray-200 space-y-4 shadow-xs">
+        <div className="bg-white p-6 rounded-[20px] border border-gray-200 space-y-4 shadow-xs">
           <h3 className="font-bold text-base text-gray-900">Disbursed Payout History</h3>
           <div className="space-y-2">
             {released.map((r) => (
@@ -138,7 +138,7 @@ export default function AdminPayoutsPage() {
                   <span className="font-bold text-gray-900 block">{r.winnerName} ({r.groupCode})</span>
                   <span className="text-gray-500">Ref: {r.disbursedRef} • Checker Notes: {r.checkerNotes}</span>
                 </div>
-                <span className="font-black text-emerald-700 text-sm">₹{r.prizeAmount.toLocaleString('en-IN')}</span>
+                <span className="font-semibold text-emerald-700 text-sm">₹{r.prizeAmount.toLocaleString('en-IN')}</span>
               </div>
             ))}
           </div>
