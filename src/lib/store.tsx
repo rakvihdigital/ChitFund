@@ -17,11 +17,25 @@ const str = (value: unknown) => value == null ? '' : String(value);
 const num = (value: unknown) => Number(value ?? 0);
 const date = (value: unknown) => str(value).slice(0, 10);
 const stamp = (value: unknown) => str(value).replace('T', ' ').slice(0, 16);
+// Audit details are either { field: { from, to } } for updates or the whole row for creates/deletes
+const auditDetails = (value: unknown) => {
+  if (!value || typeof value !== 'object') return str(value);
+  return Object.entries(value as Row)
+    .filter(([key, v]) => v != null && !['id', 'created_at', 'updated_at'].includes(key))
+    .map(([key, v]) => {
+      const change = v as { from?: unknown; to?: unknown };
+      return typeof v === 'object' && 'to' in change ? `${key}: ${str(change.from) || '—'} → ${str(change.to) || '—'}` : `${key}: ${str(v)}`;
+    })
+    .join('; ');
+};
 async function loadRows(name: string): Promise<Row[]> {
   const all: Row[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase.from(name).select('*').order('id').range(offset, offset + 999);
-    if (error) throw new Error(`${name}: ${error.message}`);
+    if (error) {
+      if (name === 'admin_users') return [];
+      throw new Error(`${name}: ${error.message}`);
+    }
     const batch = (data ?? []) as Row[];
     all.push(...batch);
     if (batch.length < 1000) return all;
@@ -120,23 +134,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const { data: own, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (profileError) throw profileError;
-    if (!own.is_active) throw new Error('This account is inactive. Contact the administrator.');
-    const current = profile(own as Row);
-    setCustomerUser(current.role === 'CUSTOMER' ? current : null);
-    setAdminUser(staffRoles.includes(current.role) ? current : null);
+    const { data: adminRow } = await supabase.from('admin_users').select('*').eq('id', userId).maybeSingle();
+    let currentAdmin: UserProfile | null = null;
+    let currentCustomer: UserProfile | null = null;
+    if (adminRow) {
+      if (!adminRow.is_active) throw new Error('This account is inactive. Contact the administrator.');
+      currentAdmin = profile(adminRow as Row);
+    } else {
+      const { data: own, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (profileError) throw profileError;
+      if (own) {
+        if (!own.is_active) throw new Error('This account is inactive. Contact the administrator.');
+        const current = profile(own as Row);
+        if (current.role === 'CUSTOMER') currentCustomer = current;
+        if (staffRoles.includes(current.role)) currentAdmin = current;
+      }
+    }
+    setCustomerUser(currentCustomer);
+    setAdminUser(currentAdmin);
 
     const names = [
-      'profiles', 'chit_subscribers', 'installments', 'payments', 'customer_kyc',
+      'admin_users', 'profiles', 'chit_subscribers', 'installments', 'payments', 'customer_kyc',
       'kyc_documents', 'customer_bank_accounts', 'nominees', 'auctions', 'auction_bids',
       'prizes', 'payouts', 'payout_approvals', 'guarantors', 'documents', 'notifications',
       'ledger_entries', 'support_tickets', 'support_ticket_messages', 'audit_logs',
     ] as const;
     const results = await Promise.all(names.map(loadRows));
     const rows = Object.fromEntries(names.map((name, index) => [name, results[index]])) as Record<typeof names[number], Row[]>;
+    const adminUsers = (rows.admin_users ?? []).map(profile);
     const profiles = rows.profiles.map(profile);
-    const nameFor = (id: unknown) => profiles.find(p => p.id === id)?.fullName ?? 'Member';
+    const allUsers = [...profiles, ...adminUsers];
+    const nameFor = (id: unknown) => allUsers.find(p => p.id === id)?.fullName ?? 'Member';
     const subscribersMapped: ChitSubscriber[] = rows.chit_subscribers.map(s => ({
       id: str(s.id), groupId: str(s.group_id), userId: str(s.user_id), userName: nameFor(s.user_id),
       seatNumber: num(s.seat_number), status: str(s.status) as ChitSubscriber['status'],
@@ -188,16 +216,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       auctionsMapped.filter(a => a.groupId === g.id).sort((a, b) => a.auctionDate.localeCompare(b.auctionDate))[0] ?? null)));
     setCustomers(profiles.filter(p => p.role === 'CUSTOMER'));
     setSubscribers(subscribersMapped); setInstallments(installmentsMapped); setPayments(paymentsMapped);
-    setKycList(rows.customer_kyc.map(k => ({
-      id: str(k.id), userId: str(k.user_id), panNumber: str(k.pan_number),
-      aadhaarNumber: k.aadhaar_last4 ? `•••• •••• ${str(k.aadhaar_last4)}` : '',
-      status: str(k.status) as CustomerKYC['status'], rejectionReason: str(k.rejection_reason),
-      verifiedBy: nameFor(k.verified_by), verifiedAt: stamp(k.verified_at), submittedAt: stamp(k.submitted_at),
-      documents: rows.kyc_documents.filter(d => d.kyc_id === k.id).map(d => ({
-        type: str(d.document_type) as CustomerKYC['documents'][number]['type'], fileName: str(d.file_name),
-        fileUrl: str(d.file_path), uploadedAt: date(d.uploaded_at),
-      })),
-    })));
+    setKycList(rows.customer_kyc.map(k => {
+      const applicant = allUsers.find(p => p.id === k.user_id);
+      return {
+        id: str(k.id),
+        userId: str(k.user_id),
+        userName: applicant?.fullName || nameFor(k.user_id),
+        userEmail: applicant?.email || '',
+        userPhone: applicant?.phone || '',
+        panNumber: str(k.pan_number),
+        aadhaarNumber: k.aadhaar_last4 ? `•••• •••• ${str(k.aadhaar_last4)}` : '',
+        status: str(k.status) as CustomerKYC['status'],
+        rejectionReason: str(k.rejection_reason),
+        verifiedBy: nameFor(k.verified_by),
+        verifiedAt: stamp(k.verified_at),
+        submittedAt: stamp(k.submitted_at),
+        documents: rows.kyc_documents.filter(d => d.kyc_id === k.id).map(d => ({
+          type: str(d.document_type) as CustomerKYC['documents'][number]['type'],
+          fileName: str(d.file_name),
+          fileUrl: str(d.file_path),
+          uploadedAt: date(d.uploaded_at),
+        })),
+      };
+    }));
     setBankAccounts(bankMapped);
     setNominees(rows.nominees.map(n => ({ id: str(n.id), userId: str(n.user_id), name: str(n.nominee_name),
       relationship: str(n.relationship), phone: str(n.phone_number), idProofNumber: str(n.id_proof_number) })));
@@ -232,9 +273,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       priority: str(t.priority) as SupportTicket['priority'], status: str(t.status) as SupportTicket['status'],
       messages: rows.support_ticket_messages.filter(m => m.ticket_id === t.id).map(m => ({ sender: str(m.sender_type) as 'CUSTOMER' | 'SUPPORT', senderName: nameFor(m.sender_id), text: str(m.message), timestamp: stamp(m.created_at) })),
       createdAt: stamp(t.created_at), updatedAt: stamp(t.updated_at) })));
-    setAuditLogs(rows.audit_logs.map(a => ({ id: str(a.id), actorId: str(a.actor_id), actorName: nameFor(a.actor_id),
+    setAuditLogs([...rows.audit_logs].sort((a, b) => str(b.created_at).localeCompare(str(a.created_at))).map(a => ({
+      id: str(a.id), actorId: str(a.actor_id), actorName: a.actor_id ? nameFor(a.actor_id) : 'System',
       actorRole: str(a.actor_role) as UserRole, action: str(a.action), resourceType: str(a.resource_type),
-      resourceId: str(a.resource_id), ipAddress: str(a.ip_address), details: JSON.stringify(a.details ?? ''), timestamp: stamp(a.created_at) })));
+      resourceId: str(a.resource_id), ipAddress: str(a.ip_address), details: auditDetails(a.details), timestamp: stamp(a.created_at) })));
   }, []);
 
   useEffect(() => {
@@ -255,11 +297,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw error;
     const { data: auth } = await supabase.auth.getUser();
-    const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', auth.user?.id ?? '').single();
-    if (profileError) throw profileError;
-    if (!row.is_active || (staff ? !staffRoles.includes(row.role as UserRole) : row.role !== 'CUSTOMER')) {
-      await supabase.auth.signOut();
-      throw new Error(staff ? 'This account has no staff access.' : 'Use the staff sign-in for this account.');
+    const uid = auth.user?.id ?? '';
+
+    if (staff) {
+      const { data: adminRow } = await supabase.from('admin_users').select('role,is_active').eq('id', uid).maybeSingle();
+      if (adminRow) {
+        if (!adminRow.is_active || !staffRoles.includes(adminRow.role as UserRole)) {
+          await supabase.auth.signOut();
+          throw new Error('This account has no staff access.');
+        }
+        return;
+      }
+      const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', uid).maybeSingle();
+      if (profileError || !row || !row.is_active || !staffRoles.includes(row.role as UserRole)) {
+        await supabase.auth.signOut();
+        throw new Error('This account has no staff access.');
+      }
+    } else {
+      const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', uid).maybeSingle();
+      if (profileError || !row || !row.is_active || row.role !== 'CUSTOMER') {
+        await supabase.auth.signOut();
+        throw new Error('Use the staff sign-in for this account.');
+      }
     }
   });
   const customerLogin = (email: string, password: string) => signIn(email, password, false);
@@ -269,7 +328,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password,
       options: { data: { full_name: name.trim(), phone_number: phone.trim() } } });
     if (error) { setOperationError(error.message); return false; }
-    if (!data.session) return 'confirm-email';
+    if (!data.session) {
+      const { data: loginData } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (!loginData?.session) return 'confirm-email';
+    }
     try { await refresh(); return 'signed-in'; }
     catch (loadError) { setOperationError(loadError instanceof Error ? loadError.message : 'Unable to load account'); return false; }
   };

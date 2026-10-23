@@ -62,6 +62,19 @@ CREATE TABLE public.profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 1b. Admin Users (dedicated table for staff and administrators)
+CREATE TABLE public.admin_users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT NOT NULL,
+    phone_number VARCHAR(15),
+    role user_role_type NOT NULL DEFAULT 'SUPER_ADMIN',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 2. Customer KYC (one record per customer; resubmission updates the same row)
 CREATE TABLE public.customer_kyc (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -440,6 +453,9 @@ RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
     SELECT EXISTS (
+        SELECT 1 FROM public.admin_users
+        WHERE id = (SELECT auth.uid()) AND is_active AND role = ANY (roles)
+    ) OR EXISTS (
         SELECT 1 FROM public.profiles
         WHERE id = (SELECT auth.uid()) AND is_active AND role = ANY (roles)
     );
@@ -451,6 +467,9 @@ RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
     SELECT EXISTS (
+        SELECT 1 FROM public.admin_users
+        WHERE id = (SELECT auth.uid()) AND is_active
+    ) OR EXISTS (
         SELECT 1 FROM public.profiles
         WHERE id = (SELECT auth.uid()) AND is_active AND role <> 'CUSTOMER'
     );
@@ -510,21 +529,44 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.auctions FOR EACH ROW EXEC
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.payouts FOR EACH ROW EXECUTE FUNCTION private.set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.support_tickets FOR EACH ROW EXECUTE FUNCTION private.set_updated_at();
 
--- Create a profile for every new auth user.
--- The role is always CUSTOMER: never read it from user metadata, which the user controls.
--- Pass full_name and phone_number in options.data when calling supabase.auth.signUp().
-CREATE FUNCTION private.handle_new_user()
+-- Automatically confirm email on user signup (no email confirmation needed)
+CREATE FUNCTION private.auto_confirm_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
+    NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, NOW());
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_auto_confirm
+    BEFORE INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION private.auto_confirm_new_user();
+
+-- Create a profile for every new auth user.
+-- The role is always CUSTOMER: never read it from user metadata, which the user controls.
+-- Pass full_name and phone_number in options.data when calling supabase.auth.signUp().
+CREATE OR REPLACE FUNCTION private.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+    -- Do not insert into profiles if the user is in admin_users or has admin/staff role
+    IF EXISTS (SELECT 1 FROM public.admin_users WHERE id = NEW.id OR email = NEW.email)
+       OR (NEW.raw_app_meta_data ->> 'role') = 'SUPER_ADMIN'
+       OR (NEW.raw_user_meta_data ->> 'is_admin')::boolean = true THEN
+        RETURN NEW;
+    END IF;
+
     INSERT INTO public.profiles (id, full_name, email, phone_number)
     VALUES (
         NEW.id,
         COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data ->> 'full_name'), ''), SPLIT_PART(NEW.email, '@', 1), 'Customer'),
         NEW.email,
         NULLIF(REGEXP_REPLACE(COALESCE(NEW.raw_user_meta_data ->> 'phone_number', NEW.phone, ''), '[^0-9+]', '', 'g'), '')
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
 END;
 $$;
@@ -810,6 +852,7 @@ GRANT EXECUTE ON FUNCTION public.join_chit_group(UUID) TO authenticated;
 -- Writes not covered by a policy go through the service role (server only).
 -- ==============================================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_kyc ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kyc_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_bank_accounts ENABLE ROW LEVEL SECURITY;

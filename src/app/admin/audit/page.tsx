@@ -12,7 +12,7 @@ export default function AdminAuditPage() {
       <div>
         <h2 className="text-xl font-bold text-gray-900">Immutable Audit Trail</h2>
         <p className="text-xs text-gray-500">
-          Cryptographically recorded security and financial event log for regulatory compliance and forensics
+          Append-only log of security and financial events, recorded by the database, for regulatory compliance and forensics
         </p>
       </div>
 
@@ -48,7 +48,7 @@ export default function AdminAuditPage() {
                     </td>
                     <td className="p-4 font-bold text-[#123d33]">{log.action}</td>
                     <td className="p-4 text-gray-500 font-mono text-[11px]">{log.resourceType}</td>
-                    <td className="p-4 text-gray-700 max-w-xs truncate">{log.details}</td>
+                    <td className="p-4 text-gray-700 max-w-xs break-words" title={log.details}>{log.details}</td>
                     <td className="p-4 font-mono text-gray-400 text-[11px]">{log.ipAddress}</td>
                     <td className="p-4 text-gray-400 text-[11px]">{log.timestamp}</td>
                   </tr>

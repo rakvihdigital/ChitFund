@@ -9,7 +9,7 @@ import { Shield, Lock, Mail, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-r
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { adminLogin, adminUser } = useApp();
+  const { adminLogin, adminUser, operationError } = useApp();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,15 +28,21 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     void (async () => {
-      const success = await adminLogin(email, password);
-      if (success) {
-        router.push('/admin');
-      } else {
-        setErrorMsg('Invalid administrator credentials.');
+      try {
+        const success = await adminLogin(email, password);
+        if (success) {
+          router.push('/admin');
+        } else {
+          setIsLoading(false);
+        }
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : 'Login failed');
         setIsLoading(false);
       }
     })();
   };
+
+  const activeError = errorMsg || operationError;
 
   return (
     <div className="auth-page staff-auth-page"><div className="auth-intro"><span>RAKVIH · MANAGEMENT SUITE</span><h1>A clearer view.<br /><em>At every step.</em></h1><p>Your workspace for schemes, subscriber records, collections, and approvals.</p><div>One connected workspace for your team.</div></div>
@@ -62,10 +68,10 @@ export default function AdminLoginPage() {
           </p>
         </div>
 
-        {errorMsg && (
+        {activeError && (
           <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{errorMsg}</span>
+            <span>{activeError}</span>
           </div>
         )}
 

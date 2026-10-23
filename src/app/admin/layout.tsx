@@ -5,12 +5,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/lib/store';
-import { LayoutDashboard, Layers, Users, FileCheck, CreditCard, Award, Lock, BookOpen, History, LogOut, ArrowUpRight, Menu, X, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Layers, Users, UserCheck, FileCheck, CreditCard, Award, Lock, BookOpen, History, LogOut, ArrowUpRight, Menu, X, ShieldCheck } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoaded, adminUser, adminLogout, kycList, payouts } = useApp();
+  const { isLoaded, adminUser, adminLogout, kycList, payouts, customers } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const isLoginPage = pathname === '/admin/login';
   React.useEffect(() => { if (isLoaded && !adminUser && !isLoginPage) router.push('/admin/login'); }, [isLoaded, adminUser, isLoginPage, router]);
@@ -26,7 +26,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { href: '/admin', label: 'Dashboard Overview', icon: LayoutDashboard },
     { href: '/admin/groups', label: 'Chit Schemes', icon: Layers },
-    { href: '/admin/subscribers', label: 'Subscribers & Seats', icon: Users },
+    { href: '/admin/users', label: 'Registered Customers', icon: Users, count: customers?.length },
+    { href: '/admin/subscribers', label: 'Subscribers & Seats', icon: UserCheck },
     { href: '/admin/kyc', label: 'KYC Approvals', icon: FileCheck, count: kycList.filter(k => k.status === 'PENDING_APPROVAL').length },
     { href: '/admin/collections', label: 'Collections & Dues', icon: CreditCard },
     { href: '/admin/auctions', label: 'e-Auctions & Draws', icon: Award },
@@ -46,7 +47,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="admin-account"><div className="admin-account-person"><span>{adminUser?.fullName?.charAt(0) || 'A'}</span><div><strong>{adminUser?.fullName || 'Administrator'}</strong><small>{adminUser?.email}</small></div></div><div className="admin-account-actions"><button onClick={adminLogout}><LogOut size={15} /> Sign out</button><Link href="/"><ArrowUpRight size={16} /> Website</Link></div></div>
     </aside>
     <div className="admin-workspace"><header className="admin-topbar"><div className="admin-page-title"><button className="admin-menu-toggle" aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}><Menu size={22} /></button><div><span>ADMIN / {current?.label.toUpperCase()}</span><h1>{pathname === '/admin' ? 'Executive Overview' : current?.label || 'Workspace'}</h1></div></div><span className="workspace-badge"><ShieldCheck size={16} /> Govt Chit Funds Act 1982 Compliant</span></header>
-      <main id="admin-content" className="admin-content">{adminUser ? children : <div className="workspace-loading"><ShieldCheck size={28} /><h2>{isLoaded ? 'Admin Authorization Required' : 'Preparing workspace'}</h2><p>{isLoaded ? 'Redirecting to administrator authentication gateway...' : 'Loading your account and modules...'}</p>{isLoaded && <Link href="/admin/login">Go to Admin Login</Link>}</div>}</main>
+      <main id="admin-content" className="admin-content">
+        {!adminUser && isLoaded ? (
+          <div className="workspace-loading">
+            <ShieldCheck size={28} />
+            <h2>Admin Authorization Required</h2>
+            <p>Redirecting to administrator authentication gateway...</p>
+            <Link href="/admin/login">Go to Admin Login</Link>
+          </div>
+        ) : (
+          children
+        )}
+      </main>
     </div>
   </div>;
 }

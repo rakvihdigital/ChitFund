@@ -15,6 +15,9 @@ export interface UserProfile {
 export interface CustomerKYC {
   id: string;
   userId: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string;
   panNumber: string;
   aadhaarNumber: string;
   status: KYCStatus;
