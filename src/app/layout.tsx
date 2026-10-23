@@ -3,7 +3,10 @@ import './globals.css';
 import { AppProvider } from '@/lib/store';
 
 export const metadata: Metadata = {
-  title: 'RAKVIH Solutions — Digital Chit Fund Management Platform',
+  title: {
+    default: 'RAKVIH Solutions — Digital Chit Fund Management Platform',
+    template: '%s · RAKVIH',
+  },
   description:
     'End-to-end digital chit fund management platform for customer registration, KYC verification, monthly contributions, live e-auctions, prize payouts, and financial ledgers.',
 };

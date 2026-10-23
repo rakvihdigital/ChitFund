@@ -7,7 +7,8 @@ import { CreditCard } from 'lucide-react';
 export default function AdminCollectionsPage() {
   const { payments, installments } = useApp();
 
-  const totalCollected = payments.reduce((acc, p) => acc + p.amountPaid, 0);
+  const settledPayments = payments.filter(p => p.status === 'SUCCESS' || p.status === 'RECONCILED');
+  const totalCollected = settledPayments.reduce((acc, p) => acc + p.amountPaid, 0);
   const pendingDues = installments.filter((i) => i.status === 'DUE' || i.status === 'OVERDUE');
   const totalPendingDues = pendingDues.reduce((acc, i) => acc + i.netPayable, 0);
 
@@ -24,7 +25,7 @@ export default function AdminCollectionsPage() {
         <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">
           <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Total Realized Collections</span>
           <span className="text-3xl font-semibold text-emerald-700">₹{totalCollected.toLocaleString('en-IN')}</span>
-          <span className="text-[11px] text-gray-500 block">{payments.length} Transactions</span>
+          <span className="text-[11px] text-gray-500 block">{settledPayments.length} Successful Transactions</span>
         </div>
 
         <div className="bg-white p-6 rounded-[20px] border border-gray-200 shadow-xs space-y-1">

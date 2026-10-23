@@ -10,13 +10,13 @@ export default function AdminAuctionsPage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '');
   const [monthNumber, setMonthNumber] = useState(1);
-  const [auctionDate, setAuctionDate] = useState('2026-11-15 15:00');
+  const [auctionDate, setAuctionDate] = useState('2026-11-15T15:00');
 
-  const handleScheduleSubmit = (e: React.FormEvent) => {
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedGroupId) return;
-    scheduleAuction(selectedGroupId, monthNumber, auctionDate);
-    setShowScheduleModal(false);
+    const groupId = selectedGroupId || groups[0]?.id;
+    if (!groupId) return;
+    if (await scheduleAuction(groupId, monthNumber, auctionDate)) setShowScheduleModal(false);
   };
 
   return (
@@ -98,7 +98,7 @@ export default function AdminAuctionsPage() {
                     onClick={() => finalizeAuction(auc.id)}
                     className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-sm"
                   >
-                    Declare Winner & Distribute Dividend Credits
+                    Declare Winner & Record Prize
                   </button>
                 </div>
               )}
@@ -122,7 +122,7 @@ export default function AdminAuctionsPage() {
               <div>
                 <label className="font-bold text-gray-700 block mb-1">Select Chit Scheme</label>
                 <select
-                  value={selectedGroupId}
+                  value={selectedGroupId || groups[0]?.id || ''}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
                   className="w-full border border-gray-300 rounded-xl p-3 outline-none"
                   required
@@ -151,10 +151,10 @@ export default function AdminAuctionsPage() {
               <div>
                 <label className="font-bold text-gray-700 block mb-1">Auction Date & Time</label>
                 <input
-                  type="text"
+                  type="datetime-local"
                   value={auctionDate}
                   onChange={(e) => setAuctionDate(e.target.value)}
-                  placeholder="2026-11-15 15:00"
+                  placeholder="2026-11-15T15:00"
                   className="w-full border border-gray-300 rounded-xl p-3 outline-none"
                   required
                 />

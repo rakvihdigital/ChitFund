@@ -32,7 +32,6 @@ function CustomerLoginForm() {
   const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(true);
-  const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -43,19 +42,13 @@ function CustomerLoginForm() {
     }
   }, [customerUser, redirectUrl, router]);
 
-  const handleQuickDemoFill = () => {
-    setEmail('subscriber@rakvih.com');
-    setPassword('subscriber123');
-    setErrorMsg('');
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
     setIsLoading(true);
 
-    setTimeout(() => {
+    void (async () => {
       if (mode === 'signin') {
         if (!email.trim()) {
           setErrorMsg('Please enter your registered email address.');
@@ -67,7 +60,7 @@ function CustomerLoginForm() {
           setIsLoading(false);
           return;
         }
-        const success = customerLogin(email, password);
+        const success = await customerLogin(email, password);
         if (success) {
           setSuccessMsg('Authenticated! Opening your portal...');
           setTimeout(() => router.push(redirectUrl), 400);
@@ -96,16 +89,19 @@ function CustomerLoginForm() {
           setIsLoading(false);
           return;
         }
-        const success = customerSignUp(fullName, email, phone, password);
-        if (success) {
+        const success = await customerSignUp(fullName, email, phone, password);
+        if (success === 'signed-in') {
           setSuccessMsg('Account registered! Taking you to customer portal...');
           setTimeout(() => router.push(redirectUrl), 500);
+        } else if (success === 'confirm-email') {
+          setSuccessMsg('Check your email to confirm your account, then sign in.');
+          setIsLoading(false);
         } else {
           setErrorMsg('Registration failed. Please try again.');
           setIsLoading(false);
         }
       }
-    }, 350);
+    })();
   };
 
   return (
@@ -334,13 +330,6 @@ function CustomerLoginForm() {
                 <label className="text-[11px] font-bold text-gray-700">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={handleQuickDemoFill}
-                  className="text-[10px] text-amber-700 hover:text-amber-800 font-bold hover:underline cursor-pointer"
-                >
-                  Fill Demo Login
-                </button>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
@@ -364,18 +353,9 @@ function CustomerLoginForm() {
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-gray-600 pt-0.5">
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded text-[#123d33] focus:ring-[#123d33]"
-                />
-                <span>Remember me</span>
-              </label>
               <span className="text-gray-400 text-[10px] flex items-center">
                 <Shield className="w-3 h-3 text-emerald-600 mr-1" />
-                Secure 256-bit SSL
+                Secure sign in
               </span>
             </div>
           </>

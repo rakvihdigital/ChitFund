@@ -1,41 +1,47 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  UserProfile,
-  CustomerKYC,
-  BankAccount,
-  Nominee,
-  ChitGroup,
-  ChitSubscriber,
-  Installment,
-  PaymentRecord,
-  AuctionEvent,
-  PayoutRequest,
-  DigitalDocument,
-  NotificationItem,
-  LedgerEntry,
-  SupportTicket,
-  AuditLogEntry,
-  UserRole
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { supabase } from './supabase';
+import type {
+  UserProfile, CustomerKYC, BankAccount, Nominee, ChitGroup, ChitSubscriber,
+  Installment, PaymentRecord, AuctionEvent, PayoutRequest, DigitalDocument,
+  NotificationItem, LedgerEntry, SupportTicket, AuditLogEntry, UserRole,
 } from './types';
 
+type Row = Record<string, unknown>;
+type AsyncAction = Promise<boolean>;
+type SignUpResult = 'signed-in' | 'confirm-email' | false;
+type PaymentMode = 'UPI' | 'NET_BANKING' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'BANK_TRANSFER';
+type TicketCategory = 'PAYMENT' | 'AUCTION' | 'KYC' | 'PAYOUT' | 'OTHER';
+const str = (value: unknown) => value == null ? '' : String(value);
+const num = (value: unknown) => Number(value ?? 0);
+const date = (value: unknown) => str(value).slice(0, 10);
+const stamp = (value: unknown) => str(value).replace('T', ' ').slice(0, 16);
+async function loadRows(name: string): Promise<Row[]> {
+  const all: Row[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.from(name).select('*').order('id').range(offset, offset + 999);
+    if (error) throw new Error(`${name}: ${error.message}`);
+    const batch = (data ?? []) as Row[];
+    all.push(...batch);
+    if (batch.length < 1000) return all;
+  }
+}
+
 interface AppContextType {
-  // Auth state
   isLoaded: boolean;
+  operationError: string;
   customerUser: UserProfile | null;
   adminUser: UserProfile | null;
   authModalOpen: boolean;
   authModalMode: 'signin' | 'signup';
   openAuthModal: (mode?: 'signin' | 'signup') => void;
   closeAuthModal: () => void;
-  customerLogin: (email: string, password?: string) => boolean;
-  customerSignUp: (fullName: string, email: string, phone: string, password?: string) => boolean;
-  customerLogout: () => void;
-  adminLogin: (email: string, password: string) => boolean;
-  adminLogout: () => void;
-
-  // Real Data Collections (No dummy personas)
+  customerLogin: (email: string, password: string) => AsyncAction;
+  customerSignUp: (name: string, email: string, phone: string, password: string) => Promise<SignUpResult>;
+  customerLogout: () => Promise<void>;
+  adminLogin: (email: string, password: string) => AsyncAction;
+  adminLogout: () => Promise<void>;
   groups: ChitGroup[];
   subscribers: ChitSubscriber[];
   installments: Installment[];
@@ -50,84 +56,41 @@ interface AppContextType {
   ledger: LedgerEntry[];
   tickets: SupportTicket[];
   auditLogs: AuditLogEntry[];
-
-  // Real Operations
-  createChitGroup: (group: Partial<ChitGroup>) => void;
-  deleteChitGroup: (groupId: string) => void;
-  joinChitGroup: (groupId: string, userId?: string) => boolean;
-  submitKYC: (pan: string, aadhaar: string, files?: string[]) => void;
-  approveKYC: (kycId: string) => void;
-  rejectKYC: (kycId: string, reason: string) => void;
-  payInstallment: (installmentId: string, paymentMode: 'UPI' | 'NET_BANKING' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'BANK_TRANSFER') => void;
-  scheduleAuction: (groupId: string, monthNumber: number, auctionDate: string) => void;
-  placeAuctionBid: (auctionId: string, bidAmount: number) => void;
-  finalizeAuction: (auctionId: string) => void;
-  makerApprovePayout: (payoutId: string, notes: string) => void;
-  checkerReleasePayout: (payoutId: string, notes: string) => void;
-  createSupportTicket: (subject: string, category: 'PAYMENT' | 'AUCTION' | 'KYC' | 'PAYOUT' | 'OTHER', message: string) => void;
-  replySupportTicket: (ticketId: string, message: string) => void;
-  markNotificationRead: (id: string) => void;
+  customers: UserProfile[];
+  createChitGroup: (group: Partial<ChitGroup>) => AsyncAction;
+  deleteChitGroup: (id: string) => AsyncAction;
+  joinChitGroup: (id: string, userId?: string) => AsyncAction;
+  submitKYC: (pan: string, aadhaar: string, files: File[]) => AsyncAction;
+  approveKYC: (id: string) => AsyncAction;
+  rejectKYC: (id: string, reason: string) => AsyncAction;
+  payInstallment: (id: string, mode: PaymentMode) => AsyncAction;
+  scheduleAuction: (groupId: string, month: number, when: string) => AsyncAction;
+  placeAuctionBid: (auctionId: string, amount: number) => AsyncAction;
+  finalizeAuction: (id: string) => AsyncAction;
+  makerApprovePayout: (id: string, notes: string) => AsyncAction;
+  checkerReleasePayout: (id: string, notes: string) => AsyncAction;
+  createSupportTicket: (subject: string, category: TicketCategory, message: string) => AsyncAction;
+  replySupportTicket: (id: string, message: string) => AsyncAction;
+  markNotificationRead: (id: string) => AsyncAction;
+  openKYCDocument: (path: string) => AsyncAction;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-// Initial real official schemes created for RAKVIH Chit Fund (with 0 subscribers)
-const DEFAULT_REAL_GROUPS: ChitGroup[] = [
-  {
-    id: 'grp-rakvih-100k',
-    groupCode: 'RAK-100K-01',
-    groupName: 'RAKVIH Emerald Chit Scheme',
-    totalValue: 100000,
-    durationMonths: 20,
-    monthlyContribution: 5000,
-    totalMembers: 20,
-    currentMemberCount: 0,
-    foremanCommissionPercent: 5.0,
-    minBidPercent: 5.0,
-    maxBidPercent: 30.0,
-    startDate: '2026-11-01',
-    status: 'RECRUITING',
-    currentMonth: 1,
-    nextAuctionDate: '2026-11-15 15:00',
-    maxTicketsPerPerson: 3
-  },
-  {
-    id: 'grp-rakvih-500k',
-    groupCode: 'RAK-500K-01',
-    groupName: 'RAKVIH Royal Chit Scheme',
-    totalValue: 500000,
-    durationMonths: 25,
-    monthlyContribution: 20000,
-    totalMembers: 25,
-    currentMemberCount: 0,
-    foremanCommissionPercent: 5.0,
-    minBidPercent: 5.0,
-    maxBidPercent: 30.0,
-    startDate: '2026-12-01',
-    status: 'RECRUITING',
-    currentMonth: 1,
-    nextAuctionDate: '2026-12-15 15:00',
-    maxTicketsPerPerson: 3
-  }
-];
+const staffRoles: UserRole[] = ['SUPER_ADMIN', 'FINANCE_MANAGER', 'KYC_OFFICER', 'SUPPORT_AGENT'];
+const profile = (row: Row): UserProfile => ({
+  id: str(row.id), fullName: str(row.full_name), email: str(row.email),
+  phone: str(row.phone_number), role: str(row.role) as UserRole,
+  avatarUrl: str(row.avatar_url), joinedDate: date(row.created_at),
+});
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [operationError, setOperationError] = useState('');
   const [customerUser, setCustomerUser] = useState<UserProfile | null>(null);
   const [adminUser, setAdminUser] = useState<UserProfile | null>(null);
-
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
-
-  const openAuthModal = (mode: 'signin' | 'signup' = 'signup') => {
-    setAuthModalMode(mode);
-    setAuthModalOpen(true);
-  };
-
-  const closeAuthModal = () => {
-    setAuthModalOpen(false);
-  };
-
-  const [groups, setGroups] = useState<ChitGroup[]>(DEFAULT_REAL_GROUPS);
+  const [groups, setGroups] = useState<ChitGroup[]>([]);
   const [subscribers, setSubscribers] = useState<ChitSubscriber[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -141,701 +104,297 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [customers, setCustomers] = useState<UserProfile[]>([]);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedAuthCustomer = localStorage.getItem('rakvih_customer_user');
-      if (savedAuthCustomer) setCustomerUser(JSON.parse(savedAuthCustomer));
-
-      const savedAuthAdmin = localStorage.getItem('rakvih_admin_user');
-      if (savedAuthAdmin) setAdminUser(JSON.parse(savedAuthAdmin));
-
-      const savedData = localStorage.getItem('rakvih_platform_data');
-      if (savedData) {
-        const parsed = JSON.parse(savedData);
-        if (parsed.groups) setGroups(parsed.groups);
-        if (parsed.subscribers) setSubscribers(parsed.subscribers);
-        if (parsed.installments) setInstallments(parsed.installments);
-        if (parsed.payments) setPayments(parsed.payments);
-        if (parsed.kycList) setKycList(parsed.kycList);
-        if (parsed.bankAccounts) setBankAccounts(parsed.bankAccounts);
-        if (parsed.nominees) setNominees(parsed.nominees);
-        if (parsed.auctions) setAuctions(parsed.auctions);
-        if (parsed.payouts) setPayouts(parsed.payouts);
-        if (parsed.documents) setDocuments(parsed.documents);
-        if (parsed.notifications) setNotifications(parsed.notifications);
-        if (parsed.ledger) setLedger(parsed.ledger);
-        if (parsed.tickets) setTickets(parsed.tickets);
-        if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
-      }
-    } catch (e) {
-      console.error('Error loading data:', e);
-    } finally {
-      setIsLoaded(true);
+  const refresh = useCallback(async () => {
+    const groupRows = (await loadRows('chit_groups')).sort((a, b) => str(b.created_at).localeCompare(str(a.created_at)));
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError && authError.name !== 'AuthSessionMissingError') throw authError;
+    const userId = authData.user?.id;
+    if (!userId) {
+      setCustomerUser(null); setAdminUser(null); setCustomers([]);
+      setSubscribers([]); setInstallments([]); setPayments([]); setKycList([]);
+      setBankAccounts([]); setNominees([]); setAuctions([]); setPayouts([]);
+      setDocuments([]); setNotifications([]); setLedger([]); setTickets([]); setAuditLogs([]);
+      setGroups(groupRows.map(g => mapGroup(g, 0, null)));
+      return;
     }
+
+    const { data: own, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (profileError) throw profileError;
+    if (!own.is_active) throw new Error('This account is inactive. Contact the administrator.');
+    const current = profile(own as Row);
+    setCustomerUser(current.role === 'CUSTOMER' ? current : null);
+    setAdminUser(staffRoles.includes(current.role) ? current : null);
+
+    const names = [
+      'profiles', 'chit_subscribers', 'installments', 'payments', 'customer_kyc',
+      'kyc_documents', 'customer_bank_accounts', 'nominees', 'auctions', 'auction_bids',
+      'prizes', 'payouts', 'payout_approvals', 'guarantors', 'documents', 'notifications',
+      'ledger_entries', 'support_tickets', 'support_ticket_messages', 'audit_logs',
+    ] as const;
+    const results = await Promise.all(names.map(loadRows));
+    const rows = Object.fromEntries(names.map((name, index) => [name, results[index]])) as Record<typeof names[number], Row[]>;
+    const profiles = rows.profiles.map(profile);
+    const nameFor = (id: unknown) => profiles.find(p => p.id === id)?.fullName ?? 'Member';
+    const subscribersMapped: ChitSubscriber[] = rows.chit_subscribers.map(s => ({
+      id: str(s.id), groupId: str(s.group_id), userId: str(s.user_id), userName: nameFor(s.user_id),
+      seatNumber: num(s.seat_number), status: str(s.status) as ChitSubscriber['status'],
+      hasWonAuction: Boolean(s.has_won_auction), wonMonth: s.won_auction_month == null ? undefined : num(s.won_auction_month),
+      totalPaid: 0, joinedDate: date(s.joined_at),
+    }));
+    const groupFor = (id: unknown) => groupRows.find(g => g.id === id);
+    const installmentsMapped: Installment[] = rows.installments.map(i => ({
+      id: str(i.id), groupId: str(i.group_id), groupCode: str(groupFor(i.group_id)?.group_code),
+      subscriberId: str(i.subscriber_id), userId: subscribersMapped.find(s => s.id === i.subscriber_id)?.userId ?? '',
+      monthNumber: num(i.month_number), dueDate: date(i.due_date), grossAmount: num(i.gross_amount),
+      dividendDiscount: num(i.dividend_discount), netPayable: num(i.net_payable), penaltyAmount: num(i.penalty_amount),
+      paidAmount: num(i.paid_amount), status: str(i.status) as Installment['status'], paidDate: date(i.updated_at),
+    }));
+    const paymentsMapped: PaymentRecord[] = rows.payments.map(p => ({
+      id: str(p.id), transactionRef: str(p.transaction_ref), installmentId: str(p.installment_id),
+      userId: str(p.user_id), groupCode: installmentsMapped.find(i => i.id === p.installment_id)?.groupCode ?? '',
+      monthNumber: installmentsMapped.find(i => i.id === p.installment_id)?.monthNumber ?? 0,
+      amountPaid: num(p.amount_paid), paymentMode: str(p.payment_mode) as PaymentRecord['paymentMode'],
+      gatewayRef: str(p.gateway_payment_id), receiptNumber: str(p.receipt_number),
+      status: str(p.status) as PaymentRecord['status'], paidAt: stamp(p.paid_at ?? p.created_at),
+    }));
+    for (const subscriber of subscribersMapped) {
+      subscriber.totalPaid = paymentsMapped.filter(p => p.userId === subscriber.userId && installmentsMapped.some(i => i.id === p.installmentId && i.subscriberId === subscriber.id) && ['SUCCESS', 'RECONCILED'].includes(p.status)).reduce((sum, p) => sum + p.amountPaid, 0);
+    }
+    const bankMapped: BankAccount[] = rows.customer_bank_accounts.map(b => ({
+      id: str(b.id), userId: str(b.user_id), accountHolder: str(b.account_holder_name),
+      accountNumber: str(b.account_number), ifscCode: str(b.ifsc_code), bankName: str(b.bank_name),
+      branch: str(b.branch_name), isVerified: Boolean(b.is_verified),
+    }));
+    const auctionsMapped: AuctionEvent[] = rows.auctions.map(a => {
+      const group = groupFor(a.group_id);
+      const winner = subscribersMapped.find(s => s.id === a.winning_subscriber_id);
+      return {
+        id: str(a.id), groupId: str(a.group_id), groupCode: str(group?.group_code), groupName: str(group?.group_name),
+        monthNumber: num(a.month_number), auctionDate: stamp(a.auction_date), status: str(a.status) as AuctionEvent['status'],
+        winningBidDiscount: num(a.winning_bid_discount), winningSubscriberId: str(a.winning_subscriber_id),
+        winningSubscriberName: winner?.userName, winningSeatNumber: winner?.seatNumber, foremanFee: num(a.foreman_fee),
+        totalDividendPool: num(a.total_dividend_pool), dividendPerMember: num(a.dividend_per_member), netPrizeAmount: num(a.net_prize_amount),
+        bids: rows.auction_bids.filter(b => b.auction_id === a.id).map(b => {
+          const bidder = subscribersMapped.find(s => s.id === b.subscriber_id);
+          return { id: str(b.id), auctionId: str(a.id), subscriberId: str(b.subscriber_id),
+            subscriberName: bidder?.userName ?? 'Member', seatNumber: bidder?.seatNumber ?? 0,
+            bidDiscountAmount: num(b.bid_discount_amount), timestamp: stamp(b.bid_timestamp) };
+        }),
+      };
+    });
+    setGroups(groupRows.map(g => mapGroup(g, subscribersMapped.filter(s => s.groupId === g.id).length,
+      auctionsMapped.filter(a => a.groupId === g.id).sort((a, b) => a.auctionDate.localeCompare(b.auctionDate))[0] ?? null)));
+    setCustomers(profiles.filter(p => p.role === 'CUSTOMER'));
+    setSubscribers(subscribersMapped); setInstallments(installmentsMapped); setPayments(paymentsMapped);
+    setKycList(rows.customer_kyc.map(k => ({
+      id: str(k.id), userId: str(k.user_id), panNumber: str(k.pan_number),
+      aadhaarNumber: k.aadhaar_last4 ? `•••• •••• ${str(k.aadhaar_last4)}` : '',
+      status: str(k.status) as CustomerKYC['status'], rejectionReason: str(k.rejection_reason),
+      verifiedBy: nameFor(k.verified_by), verifiedAt: stamp(k.verified_at), submittedAt: stamp(k.submitted_at),
+      documents: rows.kyc_documents.filter(d => d.kyc_id === k.id).map(d => ({
+        type: str(d.document_type) as CustomerKYC['documents'][number]['type'], fileName: str(d.file_name),
+        fileUrl: str(d.file_path), uploadedAt: date(d.uploaded_at),
+      })),
+    })));
+    setBankAccounts(bankMapped);
+    setNominees(rows.nominees.map(n => ({ id: str(n.id), userId: str(n.user_id), name: str(n.nominee_name),
+      relationship: str(n.relationship), phone: str(n.phone_number), idProofNumber: str(n.id_proof_number) })));
+    setAuctions(auctionsMapped);
+    setPayouts(rows.payouts.map(p => {
+      const prize = rows.prizes.find(x => x.id === p.prize_id);
+      const winner = subscribersMapped.find(s => s.id === prize?.winner_subscriber_id);
+      const approval = rows.payout_approvals.find(x => x.payout_id === p.id);
+      return { id: str(p.id), groupId: str(prize?.group_id), groupCode: str(groupFor(prize?.group_id)?.group_code),
+        winnerSubscriberId: str(prize?.winner_subscriber_id), winnerName: winner?.userName ?? 'Member',
+        winnerPhone: profiles.find(x => x.id === winner?.userId)?.phone ?? '',
+        monthNumber: auctionsMapped.find(a => a.id === prize?.auction_id)?.monthNumber ?? 0,
+        prizeAmount: num(prize?.net_payout_amount), status: str(p.status) as PayoutRequest['status'],
+        bankDetails: bankMapped.find(b => b.id === p.bank_account_id) ?? { id: '', userId: winner?.userId ?? '', accountHolder: '', accountNumber: '', ifscCode: '', bankName: '', branch: '', isVerified: false },
+        guarantors: rows.guarantors.filter(g => g.payout_id === p.id).map(g => ({ id: str(g.id), payoutId: str(p.id), name: str(g.guarantor_name), phone: str(g.phone_number), relationship: str(g.relationship), occupation: str(g.occupation), monthlyIncome: num(g.monthly_income), documentType: str(g.document_type) as PayoutRequest['guarantors'][number]['documentType'], documentRef: str(g.document_ref), verified: Boolean(g.verified) })),
+        makerUserId: str(approval?.maker_user_id), makerApprovedAt: stamp(approval?.maker_approved_at), makerNotes: str(approval?.maker_notes),
+        checkerUserId: str(approval?.checker_user_id), checkerApprovedAt: stamp(approval?.checker_approved_at), checkerNotes: str(approval?.checker_notes),
+        disbursedRef: str(p.payout_ref), requestedAt: stamp(p.created_at),
+      };
+    }));
+    setDocuments(rows.documents.map(d => ({ id: str(d.id), userId: str(d.user_id), groupId: str(d.group_id),
+      documentType: str(d.document_type) as DigitalDocument['documentType'], title: str(d.title),
+      referenceNumber: '', generatedAt: date(d.generated_at), downloadUrl: str(d.file_path) })));
+    setNotifications(rows.notifications.map(n => ({ id: str(n.id), userId: str(n.user_id), title: str(n.title), message: str(n.message),
+      channel: str(n.channel) as NotificationItem['channel'], isRead: Boolean(n.is_read), timestamp: stamp(n.created_at) })));
+    setLedger(rows.ledger_entries.map(l => ({ id: str(l.id), entryNumber: str(l.entry_number), groupId: str(l.group_id),
+      groupCode: str(groupFor(l.group_id)?.group_code), userId: str(l.user_id), userName: nameFor(l.user_id),
+      accountType: str(l.account_type) as LedgerEntry['accountType'], debitAmount: num(l.debit_amount), creditAmount: num(l.credit_amount),
+      narration: str(l.narration), timestamp: stamp(l.transaction_date) })));
+    setTickets(rows.support_tickets.map(t => ({ id: str(t.id), ticketCode: str(t.ticket_code), userId: str(t.user_id),
+      userName: nameFor(t.user_id), subject: str(t.subject), category: str(t.category) as TicketCategory,
+      priority: str(t.priority) as SupportTicket['priority'], status: str(t.status) as SupportTicket['status'],
+      messages: rows.support_ticket_messages.filter(m => m.ticket_id === t.id).map(m => ({ sender: str(m.sender_type) as 'CUSTOMER' | 'SUPPORT', senderName: nameFor(m.sender_id), text: str(m.message), timestamp: stamp(m.created_at) })),
+      createdAt: stamp(t.created_at), updatedAt: stamp(t.updated_at) })));
+    setAuditLogs(rows.audit_logs.map(a => ({ id: str(a.id), actorId: str(a.actor_id), actorName: nameFor(a.actor_id),
+      actorRole: str(a.actor_role) as UserRole, action: str(a.action), resourceType: str(a.resource_type),
+      resourceId: str(a.resource_id), ipAddress: str(a.ip_address), details: JSON.stringify(a.details ?? ''), timestamp: stamp(a.created_at) })));
   }, []);
 
-  // Save to localStorage on change
   useEffect(() => {
-    if (!isLoaded) return;
-    try {
-      const dataToSave = {
-        groups,
-        subscribers,
-        installments,
-        payments,
-        kycList,
-        bankAccounts,
-        nominees,
-        auctions,
-        payouts,
-        documents,
-        notifications,
-        ledger,
-        tickets,
-        auditLogs
-      };
-      localStorage.setItem('rakvih_platform_data', JSON.stringify(dataToSave));
-    } catch (e) {
-      console.error('Error saving data:', e);
+    let active = true;
+    const load = () => refresh().catch(error => { if (active) setOperationError(error.message ?? 'Database loading failed'); })
+      .finally(() => { if (active) setIsLoaded(true); });
+    void load();
+    const { data: listener } = supabase.auth.onAuthStateChange(() => { window.setTimeout(() => { if (active) void load(); }, 0); });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, [refresh]);
+
+  const mutate = async (action: () => Promise<void>): AsyncAction => {
+    try { setOperationError(''); await action(); await refresh(); return true; }
+    catch (error) { setOperationError(error instanceof Error ? error.message : 'Database request failed'); return false; }
+  };
+  const fail = (message: string): AsyncAction => { setOperationError(message); return Promise.resolve(false); };
+  const signIn = async (email: string, password: string, staff: boolean): AsyncAction => mutate(async () => {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) throw error;
+    const { data: auth } = await supabase.auth.getUser();
+    const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', auth.user?.id ?? '').single();
+    if (profileError) throw profileError;
+    if (!row.is_active || (staff ? !staffRoles.includes(row.role as UserRole) : row.role !== 'CUSTOMER')) {
+      await supabase.auth.signOut();
+      throw new Error(staff ? 'This account has no staff access.' : 'Use the staff sign-in for this account.');
     }
-  }, [
-    isLoaded,
-    groups,
-    subscribers,
-    installments,
-    payments,
-    kycList,
-    bankAccounts,
-    nominees,
-    auctions,
-    payouts,
-    documents,
-    notifications,
-    ledger,
-    tickets,
-    auditLogs
-  ]);
-
-  const logAudit = (actorName: string, actorRole: UserRole, action: string, resourceType: string, resourceId: string, details: string) => {
-    const newEntry: AuditLogEntry = {
-      id: `audit-${Date.now()}`,
-      actorId: 'usr-id',
-      actorName,
-      actorRole,
-      action,
-      resourceType,
-      resourceId,
-      ipAddress: '127.0.0.1',
-      details,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    setAuditLogs((prev) => [newEntry, ...prev]);
+  });
+  const customerLogin = (email: string, password: string) => signIn(email, password, false);
+  const adminLogin = (email: string, password: string) => signIn(email, password, true);
+  const customerSignUp = async (name: string, email: string, phone: string, password: string): Promise<SignUpResult> => {
+    setOperationError('');
+    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password,
+      options: { data: { full_name: name.trim(), phone_number: phone.trim() } } });
+    if (error) { setOperationError(error.message); return false; }
+    if (!data.session) return 'confirm-email';
+    try { await refresh(); return 'signed-in'; }
+    catch (loadError) { setOperationError(loadError instanceof Error ? loadError.message : 'Unable to load account'); return false; }
   };
+  const signOut = async () => { const { error } = await supabase.auth.signOut(); if (error) setOperationError(error.message); await refresh().catch(() => {}); };
+  const openAuthModal = useCallback((mode: 'signin' | 'signup' = 'signup') => { setAuthModalMode(mode); setAuthModalOpen(true); }, []);
+  const closeAuthModal = useCallback(() => setAuthModalOpen(false), []);
 
-  // Customer Login
-  const customerLogin = (email: string, _password?: string) => {
-    // Check if customer exists in saved profiles or create session
-    let savedUsers: UserProfile[] = [];
+  const createChitGroup = (group: Partial<ChitGroup>) => mutate(async () => {
+    const total = group.totalValue ?? 100000; const members = group.totalMembers ?? group.durationMonths ?? 20;
+    const contribution = total / members;
+    const { error } = await supabase.from('chit_groups').insert({
+      group_code: group.groupCode ?? `RAK-${Math.round(total / 1000)}K-${Date.now().toString(36).slice(-6)}`,
+      group_name: group.groupName ?? `RAKVIH Scheme ₹${total}`, total_value: total, duration_months: members,
+      monthly_contribution: contribution, total_members: members, max_tickets_per_person: group.maxTicketsPerPerson ?? 3,
+      start_date: group.startDate ?? new Date().toISOString().slice(0, 10), status: 'RECRUITING', created_by: adminUser?.id,
+    });
+    if (error) throw error;
+  });
+  const deleteChitGroup = (id: string) => mutate(async () => {
+    const { error } = await supabase.from('chit_groups').delete().eq('id', id); if (error) throw error;
+  });
+  const joinChitGroup = (id: string, userId?: string): AsyncAction => {
+    return mutate(async () => {
+      const { error } = userId
+        ? await supabase.rpc('staff_join_chit_group', { p_group_id: id, p_user_id: userId })
+        : await supabase.rpc('join_chit_group', { p_group_id: id });
+      if (error) throw error;
+    });
+  };
+  const submitKYC = (pan: string, aadhaar: string, files: File[]): AsyncAction => {
+    if (!customerUser) return fail('Sign in before submitting KYC.');
+    if (files.length !== 2) return fail('Select a PAN document and an Aadhaar document before submitting KYC.');
+    if (files.some(file => file.size > 10 * 1024 * 1024 || !['application/pdf', 'image/jpeg', 'image/png'].includes(file.type))) return fail('Use PDF, JPG or PNG files up to 10 MB each.');
+    const digits = aadhaar.replace(/\D/g, '');
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase()) || digits.length !== 12) return fail('Enter a valid PAN and 12-digit Aadhaar number.');
+    return mutate(async () => {
+      const { data: kyc, error } = await supabase.from('customer_kyc').upsert({ user_id: customerUser.id,
+        pan_number: pan.toUpperCase(), aadhaar_last4: digits.slice(-4), status: 'NOT_SUBMITTED',
+        verified_by: null, verified_at: null, submitted_at: null, rejection_reason: null }, { onConflict: 'user_id' }).select('id').single();
+      if (error) throw error;
+      for (const [index, file] of files.entries()) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `${customerUser.id}/${crypto.randomUUID()}-${safeName}`;
+        const uploaded = await supabase.storage.from('kyc-documents').upload(path, file, { contentType: file.type });
+        if (uploaded.error) throw uploaded.error;
+        const document = await supabase.from('kyc_documents').insert({
+          kyc_id: kyc.id, document_type: index === 0 ? 'PAN_CARD' : 'AADHAAR_FRONT',
+          file_path: path, file_name: file.name, mime_type: file.type,
+        });
+        if (document.error) throw document.error;
+      }
+      const submitted = await supabase.from('customer_kyc').update({ status: 'PENDING_APPROVAL', submitted_at: new Date().toISOString() }).eq('id', kyc.id);
+      if (submitted.error) throw submitted.error;
+    });
+  };
+  const approveKYC = (id: string) => mutate(async () => { const { error } = await supabase.from('customer_kyc').update({ status: 'VERIFIED', verified_by: adminUser?.id, verified_at: new Date().toISOString() }).eq('id', id); if (error) throw error; });
+  const rejectKYC = (id: string, reason: string) => mutate(async () => { const { error } = await supabase.from('customer_kyc').update({ status: 'REJECTED', rejection_reason: reason, verified_by: adminUser?.id, verified_at: new Date().toISOString() }).eq('id', id); if (error) throw error; });
+  const payInstallment = () => fail('Online payment is unavailable until a verified payment gateway and webhook are configured. No money was charged or marked as paid.');
+  const scheduleAuction = (groupId: string, month: number, when: string) => mutate(async () => { const { error } = await supabase.from('auctions').insert({ group_id: groupId, month_number: month, auction_date: new Date(when).toISOString(), conducted_by: adminUser?.id }); if (error) throw error; });
+  const placeAuctionBid = (auctionId: string, amount: number): AsyncAction => {
+    const auction = auctions.find(a => a.id === auctionId);
+    const sub = subscribers.find(s => s.groupId === auction?.groupId && s.userId === customerUser?.id && !s.hasWonAuction);
+    if (!sub) return fail('You need an eligible ticket in this group to bid.');
+    return mutate(async () => { const { error } = await supabase.from('auction_bids').insert({ auction_id: auctionId, group_id: auction?.groupId, subscriber_id: sub.id, bid_discount_amount: amount }); if (error) throw error; });
+  };
+  const finalizeAuction = (id: string) => mutate(async () => {
+    const { error } = await supabase.rpc('finalize_chit_auction', { p_auction_id: id }); if (error) throw error;
+  });
+  const makerApprovePayout = (id: string, notes: string) => mutate(async () => {
+    const { error } = await supabase.rpc('maker_approve_payout', { p_payout_id: id, p_notes: notes }); if (error) throw error;
+  });
+  const checkerReleasePayout = () => fail('A checker sign-off and verified bank transfer reference are required before release. No funds were released.');
+  const createSupportTicket = (subject: string, category: TicketCategory, message: string) => mutate(async () => {
+    if (!customerUser) throw new Error('Sign in before opening a support ticket.');
+    const { data: ticket, error } = await supabase.from('support_tickets').insert({
+      ticket_code: `TKT-${Date.now().toString(36).toUpperCase()}`, user_id: customerUser.id, subject, category,
+    }).select('id').single();
+    if (error) throw error;
+    const result = await supabase.from('support_ticket_messages').insert({ ticket_id: ticket.id,
+      sender_id: customerUser.id, sender_type: 'CUSTOMER', message });
+    if (result.error) throw result.error;
+  });
+  const replySupportTicket = (id: string, message: string) => mutate(async () => {
+    const sender = adminUser ?? customerUser; if (!sender) throw new Error('Sign in to reply.');
+    const { error } = await supabase.from('support_ticket_messages').insert({ ticket_id: id,
+      sender_id: sender.id, sender_type: adminUser ? 'SUPPORT' : 'CUSTOMER', message }); if (error) throw error;
+  });
+  const markNotificationRead = (id: string) => mutate(async () => { const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id); if (error) throw error; });
+  const openKYCDocument = async (path: string): AsyncAction => {
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     try {
-      const raw = localStorage.getItem('rakvih_registered_customers');
-      if (raw) savedUsers = JSON.parse(raw);
-    } catch {}
-
-    const existing = savedUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    const userToLogin: UserProfile = existing || {
-      id: `cust-${Date.now()}`,
-      fullName: email.split('@')[0],
-      email,
-      phone: '+91 98000 00000',
-      role: 'CUSTOMER',
-      joinedDate: new Date().toISOString().substring(0, 10)
-    };
-
-    setCustomerUser(userToLogin);
-    localStorage.setItem('rakvih_customer_user', JSON.stringify(userToLogin));
-    logAudit(userToLogin.fullName, 'CUSTOMER', 'CUSTOMER_LOGGED_IN', 'auth', userToLogin.id, `Logged in: ${email}`);
-    return true;
-  };
-
-  // Customer Sign Up
-  const customerSignUp = (fullName: string, email: string, phone: string, _password?: string) => {
-    const newUser: UserProfile = {
-      id: `cust-${Date.now()}`,
-      fullName,
-      email,
-      phone,
-      role: 'CUSTOMER',
-      joinedDate: new Date().toISOString().substring(0, 10)
-    };
-
-    try {
-      const raw = localStorage.getItem('rakvih_registered_customers');
-      const savedUsers: UserProfile[] = raw ? JSON.parse(raw) : [];
-      savedUsers.push(newUser);
-      localStorage.setItem('rakvih_registered_customers', JSON.stringify(savedUsers));
-    } catch {}
-
-    setCustomerUser(newUser);
-    localStorage.setItem('rakvih_customer_user', JSON.stringify(newUser));
-    logAudit(fullName, 'CUSTOMER', 'CUSTOMER_REGISTERED', 'auth', newUser.id, `New customer registered: ${email}`);
-    return true;
-  };
-
-  const customerLogout = () => {
-    setCustomerUser(null);
-    localStorage.removeItem('rakvih_customer_user');
-  };
-
-  // Admin Login
-  const adminLogin = (email: string, password?: string) => {
-    // Admin credentials verification
-    if (email.trim().toLowerCase() === 'admin@rakvih.com' && (!password || password === 'admin123' || password.length > 0)) {
-      const adminProfile: UserProfile = {
-        id: 'admin-001',
-        fullName: 'RAKVIH Administrator',
-        email: 'admin@rakvih.com',
-        phone: '+91 99000 11223',
-        role: 'SUPER_ADMIN',
-        joinedDate: '2025-01-01'
-      };
-      setAdminUser(adminProfile);
-      localStorage.setItem('rakvih_admin_user', JSON.stringify(adminProfile));
-      logAudit('RAKVIH Administrator', 'SUPER_ADMIN', 'ADMIN_LOGGED_IN', 'auth', 'admin-001', 'Admin login successful');
+      const { data, error } = await supabase.storage.from('kyc-documents').createSignedUrl(path, 60);
+      if (error) throw error;
+      if (tab) tab.location.href = data.signedUrl;
+      else window.location.href = data.signedUrl;
       return true;
-    }
-
-    // Flexible login for other administrative emails
-    if (email.includes('admin') || email.includes('rakvih')) {
-      const adminProfile: UserProfile = {
-        id: `admin-${Date.now()}`,
-        fullName: 'Admin Officer',
-        email,
-        phone: '+91 99000 11223',
-        role: 'SUPER_ADMIN',
-        joinedDate: new Date().toISOString().substring(0, 10)
-      };
-      setAdminUser(adminProfile);
-      localStorage.setItem('rakvih_admin_user', JSON.stringify(adminProfile));
-      return true;
-    }
-
-    return false;
-  };
-
-  const adminLogout = () => {
-    setAdminUser(null);
-    localStorage.removeItem('rakvih_admin_user');
-  };
-
-  // Group Management
-  const createChitGroup = (groupData: Partial<ChitGroup>) => {
-    const totalValue = groupData.totalValue || 100000;
-    const durationMonths = groupData.durationMonths || 20;
-    const monthlyContribution = groupData.monthlyContribution || totalValue / durationMonths;
-    const totalMembers = groupData.totalMembers || durationMonths;
-
-    const newGroup: ChitGroup = {
-      id: `grp-${Date.now()}`,
-      groupCode: groupData.groupCode || `RAK-${Math.floor(totalValue / 1000)}K-0${groups.length + 1}`,
-      groupName: groupData.groupName || `RAKVIH Chit Scheme ₹${totalValue.toLocaleString()}`,
-      totalValue,
-      durationMonths,
-      monthlyContribution,
-      totalMembers,
-      currentMemberCount: 0,
-      foremanCommissionPercent: 5.0,
-      minBidPercent: 5.0,
-      maxBidPercent: 30.0,
-      startDate: groupData.startDate || new Date().toISOString().substring(0, 10),
-      status: 'RECRUITING',
-      currentMonth: 1,
-      nextAuctionDate: new Date(Date.now() + 15 * 86400000).toISOString().replace('T', ' ').substring(0, 16),
-      maxTicketsPerPerson: groupData.maxTicketsPerPerson || 3
-    };
-
-    setGroups((prev) => [newGroup, ...prev]);
-    logAudit(
-      adminUser?.fullName || 'Admin',
-      'SUPER_ADMIN',
-      'CHIT_GROUP_CREATED',
-      'chit_groups',
-      newGroup.id,
-      `Created scheme ${newGroup.groupCode} worth ₹${totalValue.toLocaleString()} (Max ${newGroup.maxTicketsPerPerson} tickets/person)`
-    );
-  };
-
-  const deleteChitGroup = (groupId: string) => {
-    setGroups((prev) => prev.filter((g) => g.id !== groupId));
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'CHIT_GROUP_DELETED', 'chit_groups', groupId, `Deleted group ${groupId}`);
-  };
-
-  // Join Chit Group (Supports up to maxTicketsPerPerson for a single subscriber)
-  const joinChitGroup = (groupId: string, targetUserId?: string): boolean => {
-    const userId = targetUserId || customerUser?.id;
-    const userName = targetUserId ? 'Enrolled Member' : customerUser?.fullName || 'Customer';
-    if (!userId) return false;
-
-    const targetGroup = groups.find((g) => g.id === groupId);
-    if (!targetGroup) return false;
-
-    if (targetGroup.currentMemberCount >= targetGroup.totalMembers) {
-      alert('This chit group is already full.');
+    } catch (error) {
+      tab?.close();
+      setOperationError(error instanceof Error ? error.message : 'Unable to open KYC document');
       return false;
     }
-
-    // Check maximum tickets allowed per single person
-    const existingTickets = subscribers.filter((s) => s.groupId === groupId && s.userId === userId);
-    const maxAllowed = targetGroup.maxTicketsPerPerson || 3;
-    if (existingTickets.length >= maxAllowed) {
-      alert(`Maximum ticket limit reached. A single subscriber can hold at most ${maxAllowed} tickets/seats in this chit scheme.`);
-      return false;
-    }
-
-    const nextSeat = targetGroup.currentMemberCount + 1;
-    const ticketLabel = existingTickets.length > 0 ? ` (Ticket #${existingTickets.length + 1})` : '';
-    const newSub: ChitSubscriber = {
-      id: `sub-${Date.now()}-${nextSeat}`,
-      groupId,
-      userId,
-      userName: `${userName}${ticketLabel}`,
-      seatNumber: nextSeat,
-      status: 'ACTIVE',
-      hasWonAuction: false,
-      totalPaid: 0,
-      joinedDate: new Date().toISOString().substring(0, 10)
-    };
-
-    setSubscribers((prev) => [...prev, newSub]);
-    setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, currentMemberCount: g.currentMemberCount + 1 } : g))
-    );
-
-    // Generate Month 1 Installment schedule
-    const newInst: Installment = {
-      id: `inst-${Date.now()}`,
-      groupId,
-      groupCode: targetGroup.groupCode,
-      subscriberId: newSub.id,
-      userId,
-      monthNumber: 1,
-      dueDate: new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10),
-      grossAmount: targetGroup.monthlyContribution,
-      dividendDiscount: 0,
-      netPayable: targetGroup.monthlyContribution,
-      penaltyAmount: 0,
-      paidAmount: 0,
-      status: 'DUE'
-    };
-    setInstallments((prev) => [...prev, newInst]);
-
-    logAudit(userName, 'CUSTOMER', 'SUBSCRIBER_JOINED', 'chit_subscribers', newSub.id, `Joined group ${targetGroup.groupCode} at Seat #${nextSeat}`);
-    return true;
   };
 
-  // KYC
-  const submitKYC = (pan: string, aadhaar: string, files?: string[]) => {
-    if (!customerUser) return;
-    const existingIndex = kycList.findIndex((k) => k.userId === customerUser.id);
-    const newDocList = (files && files.length > 0)
-      ? files.map((f, i) => ({
-          type: (i === 0 ? 'PAN_CARD' : 'AADHAAR_FRONT') as any,
-          fileName: f,
-          fileUrl: '#',
-          uploadedAt: new Date().toISOString().substring(0, 10)
-        }))
-      : [
-          { type: 'PAN_CARD' as const, fileName: `pan_${pan}.pdf`, fileUrl: '#', uploadedAt: new Date().toISOString().substring(0, 10) },
-          { type: 'AADHAAR_FRONT' as const, fileName: `aadhaar_${aadhaar}.pdf`, fileUrl: '#', uploadedAt: new Date().toISOString().substring(0, 10) }
-        ];
-
-    const kycObj: CustomerKYC = {
-      id: `kyc-${Date.now()}`,
-      userId: customerUser.id,
-      panNumber: pan.toUpperCase(),
-      aadhaarNumber: aadhaar,
-      status: 'PENDING_APPROVAL',
-      submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      documents: newDocList
-    };
-
-    if (existingIndex >= 0) {
-      setKycList((prev) => prev.map((k, i) => (i === existingIndex ? kycObj : k)));
-    } else {
-      setKycList((prev) => [kycObj, ...prev]);
-    }
-
-    logAudit(customerUser.fullName, 'CUSTOMER', 'KYC_SUBMITTED', 'customer_kyc', kycObj.id, `Submitted KYC for PAN ${pan}`);
-  };
-
-  const approveKYC = (kycId: string) => {
-    setKycList((prev) =>
-      prev.map((k) =>
-        k.id === kycId
-          ? {
-              ...k,
-              status: 'VERIFIED',
-              verifiedBy: adminUser?.fullName || 'Admin Officer',
-              verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-            }
-          : k
-      )
-    );
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'KYC_APPROVED', 'customer_kyc', kycId, 'Approved customer KYC verification');
-  };
-
-  const rejectKYC = (kycId: string, reason: string) => {
-    setKycList((prev) =>
-      prev.map((k) =>
-        k.id === kycId
-          ? { ...k, status: 'REJECTED', rejectionReason: reason, verifiedBy: adminUser?.fullName || 'Admin Officer' }
-          : k
-      )
-    );
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'KYC_REJECTED', 'customer_kyc', kycId, `Rejected KYC: ${reason}`);
-  };
-
-  // Pay Installment
-  const payInstallment = (
-    installmentId: string,
-    paymentMode: 'UPI' | 'NET_BANKING' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'BANK_TRANSFER'
-  ) => {
-    const inst = installments.find((i) => i.id === installmentId);
-    if (!inst) return;
-
-    const receiptNo = `RCP-RAK-${Date.now().toString().slice(-6)}`;
-    const txnRef = `TXN-RAK-${Date.now()}`;
-
-    setInstallments((prev) =>
-      prev.map((i) =>
-        i.id === installmentId
-          ? { ...i, paidAmount: i.netPayable, status: 'PAID', paidDate: new Date().toISOString().substring(0, 10) }
-          : i
-      )
-    );
-
-    const newPayment: PaymentRecord = {
-      id: `pay-${Date.now()}`,
-      transactionRef: txnRef,
-      installmentId,
-      userId: inst.userId,
-      groupCode: inst.groupCode,
-      monthNumber: inst.monthNumber,
-      amountPaid: inst.netPayable,
-      paymentMode,
-      gatewayRef: `gwy_${Date.now()}`,
-      receiptNumber: receiptNo,
-      status: 'RECONCILED',
-      paidAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    setPayments((prev) => [newPayment, ...prev]);
-
-    // Digital receipt document
-    const newDoc: DigitalDocument = {
-      id: `doc-${Date.now()}`,
-      userId: inst.userId,
-      groupId: inst.groupId,
-      documentType: 'RECEIPT',
-      title: `Instalment Receipt - Month ${inst.monthNumber}`,
-      referenceNumber: receiptNo,
-      generatedAt: new Date().toISOString().substring(0, 10),
-      downloadUrl: '#'
-    };
-    setDocuments((prev) => [newDoc, ...prev]);
-
-    // Accounting Ledger
-    const newLedger: LedgerEntry = {
-      id: `led-${Date.now()}`,
-      entryNumber: `LEDG-${Date.now()}`,
-      groupCode: inst.groupCode,
-      userId: inst.userId,
-      userName: customerUser?.fullName || 'Subscriber',
-      accountType: 'COLLECTION',
-      debitAmount: 0,
-      creditAmount: inst.netPayable,
-      narration: `Instalment received for Month ${inst.monthNumber} via ${paymentMode}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    setLedger((prev) => [newLedger, ...prev]);
-
-    logAudit(customerUser?.fullName || 'Customer', 'CUSTOMER', 'PAYMENT_COMPLETED', 'payments', newPayment.id, `Paid ₹${inst.netPayable} for ${inst.groupCode}`);
-  };
-
-  // Auction
-  const scheduleAuction = (groupId: string, monthNumber: number, auctionDate: string) => {
-    const grp = groups.find((g) => g.id === groupId);
-    if (!grp) return;
-
-    const newAuction: AuctionEvent = {
-      id: `auc-${Date.now()}`,
-      groupId,
-      groupCode: grp.groupCode,
-      groupName: grp.groupName,
-      monthNumber,
-      auctionDate,
-      status: 'SCHEDULED',
-      winningBidDiscount: 0,
-      foremanFee: (grp.totalValue * grp.foremanCommissionPercent) / 100,
-      totalDividendPool: 0,
-      dividendPerMember: 0,
-      netPrizeAmount: grp.totalValue,
-      bids: []
-    };
-    setAuctions((prev) => [newAuction, ...prev]);
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'AUCTION_SCHEDULED', 'auctions', newAuction.id, `Scheduled auction for ${grp.groupCode} Month ${monthNumber}`);
-  };
-
-  const placeAuctionBid = (auctionId: string, bidAmount: number) => {
-    const auc = auctions.find((a) => a.id === auctionId);
-    if (!auc || !customerUser) return;
-
-    const sub = subscribers.find((s) => s.groupId === auc.groupId && s.userId === customerUser.id);
-    if (!sub) return;
-
-    const newBid = {
-      id: `bid-${Date.now()}`,
-      auctionId,
-      subscriberId: sub.id,
-      subscriberName: customerUser.fullName,
-      seatNumber: sub.seatNumber,
-      bidDiscountAmount: bidAmount,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-
-    setAuctions((prev) =>
-      prev.map((a) => {
-        if (a.id === auctionId) {
-          const updatedBids = [newBid, ...a.bids];
-          const highestBid = Math.max(...updatedBids.map((b) => b.bidDiscountAmount));
-          const winningBidObj = updatedBids.find((b) => b.bidDiscountAmount === highestBid);
-          return {
-            ...a,
-            status: 'IN_PROGRESS',
-            winningBidDiscount: highestBid,
-            winningSubscriberId: winningBidObj?.subscriberId,
-            winningSubscriberName: winningBidObj?.subscriberName,
-            winningSeatNumber: winningBidObj?.seatNumber,
-            bids: updatedBids
-          };
-        }
-        return a;
-      })
-    );
-  };
-
-  const finalizeAuction = (auctionId: string) => {
-    const targetAuc = auctions.find((a) => a.id === auctionId);
-    if (!targetAuc) return;
-
-    const grp = groups.find((g) => g.id === targetAuc.groupId);
-    if (!grp) return;
-
-    const winningDiscount = targetAuc.winningBidDiscount || (grp.totalValue * grp.foremanCommissionPercent) / 100;
-    const foremanFee = (grp.totalValue * grp.foremanCommissionPercent) / 100;
-    const totalDividendPool = Math.max(0, winningDiscount - foremanFee);
-    const dividendPerMember = Math.floor(totalDividendPool / Math.max(1, grp.totalMembers));
-    const netPrizeAmount = grp.totalValue - winningDiscount;
-
-    setAuctions((prev) =>
-      prev.map((a) =>
-        a.id === auctionId
-          ? {
-              ...a,
-              status: 'COMPLETED',
-              foremanFee,
-              totalDividendPool,
-              dividendPerMember,
-              netPrizeAmount
-            }
-          : a
-      )
-    );
-
-    if (targetAuc.winningSubscriberId) {
-      setSubscribers((prev) =>
-        prev.map((s) =>
-          s.id === targetAuc.winningSubscriberId
-            ? { ...s, hasWonAuction: true, wonMonth: targetAuc.monthNumber }
-            : s
-        )
-      );
-
-      const newPayout: PayoutRequest = {
-        id: `payout-${Date.now()}`,
-        groupId: grp.id,
-        groupCode: grp.groupCode,
-        winnerSubscriberId: targetAuc.winningSubscriberId,
-        winnerName: targetAuc.winningSubscriberName || 'Winner',
-        winnerPhone: '+91 98000 00000',
-        monthNumber: targetAuc.monthNumber,
-        prizeAmount: netPrizeAmount,
-        status: 'GUARANTOR_PENDING',
-        bankDetails: {
-          id: 'bank-1',
-          userId: targetAuc.winningSubscriberId,
-          accountHolder: targetAuc.winningSubscriberName || 'Winner',
-          accountNumber: 'XXXXXX1234',
-          ifscCode: 'HDFC0001234',
-          bankName: 'HDFC Bank',
-          branch: 'Main Branch',
-          isVerified: true
-        },
-        guarantors: [],
-        requestedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-      };
-      setPayouts((prev) => [newPayout, ...prev]);
-    }
-
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'AUCTION_FINALIZED', 'auctions', auctionId, `Finalized auction for ${grp.groupCode}. Prize: ₹${netPrizeAmount}`);
-  };
-
-  // Maker-Checker
-  const makerApprovePayout = (payoutId: string, notes: string) => {
-    setPayouts((prev) =>
-      prev.map((p) =>
-        p.id === payoutId
-          ? {
-              ...p,
-              status: 'MAKER_APPROVED',
-              makerUserId: adminUser?.id,
-              makerApprovedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-              makerNotes: notes
-            }
-          : p
-      )
-    );
-    logAudit(adminUser?.fullName || 'Admin', 'FINANCE_MANAGER', 'PAYOUT_MAKER_APPROVED', 'payouts', payoutId, `Maker approved: ${notes}`);
-  };
-
-  const checkerReleasePayout = (payoutId: string, notes: string) => {
-    setPayouts((prev) =>
-      prev.map((p) =>
-        p.id === payoutId
-          ? {
-              ...p,
-              status: 'CHECKER_RELEASED',
-              checkerUserId: adminUser?.id,
-              checkerApprovedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-              checkerNotes: notes,
-              disbursedRef: `DISB-BANK-${Math.floor(100000 + Math.random() * 900000)}`
-            }
-          : p
-      )
-    );
-    logAudit(adminUser?.fullName || 'Admin', 'SUPER_ADMIN', 'PAYOUT_CHECKER_RELEASED', 'payouts', payoutId, `Checker released funds: ${notes}`);
-  };
-
-  // Tickets
-  const createSupportTicket = (subject: string, category: 'PAYMENT' | 'AUCTION' | 'KYC' | 'PAYOUT' | 'OTHER', message: string) => {
-    if (!customerUser) return;
-    const newTkt: SupportTicket = {
-      id: `tkt-${Date.now()}`,
-      ticketCode: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
-      userId: customerUser.id,
-      userName: customerUser.fullName,
-      subject,
-      category,
-      priority: 'MEDIUM',
-      status: 'OPEN',
-      messages: [
-        {
-          sender: 'CUSTOMER',
-          senderName: customerUser.fullName,
-          text: message,
-          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
-        }
-      ],
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    setTickets((prev) => [newTkt, ...prev]);
-  };
-
-  const replySupportTicket = (ticketId: string, message: string) => {
-    const isCustomer = !!customerUser && !adminUser;
-    setTickets((prev) =>
-      prev.map((t) =>
-        t.id === ticketId
-          ? {
-              ...t,
-              status: !isCustomer ? 'IN_PROGRESS' : t.status,
-              updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-              messages: [
-                ...t.messages,
-                {
-                  sender: isCustomer ? 'CUSTOMER' : 'SUPPORT',
-                  senderName: isCustomer ? customerUser?.fullName || 'Customer' : adminUser?.fullName || 'Admin Support',
-                  text: message,
-                  timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
-                }
-              ]
-            }
-          : t
-      )
-    );
-  };
-
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-  };
-
-  return (
-    <AppContext.Provider
-      value={{
-        isLoaded,
-        customerUser,
-        adminUser,
-        authModalOpen,
-        authModalMode,
-        openAuthModal,
-        closeAuthModal,
-        customerLogin,
-        customerSignUp,
-        customerLogout,
-        adminLogin,
-        adminLogout,
-        groups,
-        subscribers,
-        installments,
-        payments,
-        kycList,
-        bankAccounts,
-        nominees,
-        auctions,
-        payouts,
-        documents,
-        notifications,
-        ledger,
-        tickets,
-        auditLogs,
-        createChitGroup,
-        deleteChitGroup,
-        joinChitGroup,
-        submitKYC,
-        approveKYC,
-        rejectKYC,
-        payInstallment,
-        scheduleAuction,
-        placeAuctionBid,
-        finalizeAuction,
-        makerApprovePayout,
-        checkerReleasePayout,
-        createSupportTicket,
-        replySupportTicket,
-        markNotificationRead
-      }}
-    >
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={{ isLoaded, operationError, customerUser, adminUser, authModalOpen,
+    authModalMode, openAuthModal, closeAuthModal, customerLogin, customerSignUp,
+    customerLogout: signOut, adminLogin, adminLogout: signOut, groups, subscribers, installments, payments,
+    kycList, bankAccounts, nominees, auctions, payouts, documents, notifications, ledger, tickets,
+    auditLogs, customers, createChitGroup, deleteChitGroup, joinChitGroup, submitKYC, approveKYC, rejectKYC,
+    payInstallment, scheduleAuction, placeAuctionBid, finalizeAuction, makerApprovePayout, checkerReleasePayout,
+    createSupportTicket, replySupportTicket, markNotificationRead, openKYCDocument }}>
+    {children}
+    {operationError && <div role="alert" className="fixed bottom-4 right-4 z-[100] max-w-md rounded-xl bg-red-800 p-4 text-sm text-white shadow-xl">
+      <button aria-label="Dismiss error" onClick={() => setOperationError('')} className="float-right ml-4">×</button>{operationError}
+    </div>}
+  </AppContext.Provider>;
 };
 
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  return context;
-};
+function mapGroup(g: Row, count: number, nextAuction: AuctionEvent | null): ChitGroup {
+  return { id: str(g.id), groupCode: str(g.group_code), groupName: str(g.group_name), totalValue: num(g.total_value),
+    durationMonths: num(g.duration_months), monthlyContribution: num(g.monthly_contribution), totalMembers: num(g.total_members),
+    currentMemberCount: num(g.current_member_count ?? count), foremanCommissionPercent: num(g.foreman_commission_percent),
+    minBidPercent: num(g.min_bid_discount_percent), maxBidPercent: num(g.max_bid_discount_percent),
+    startDate: date(g.start_date), status: str(g.status) as ChitGroup['status'], currentMonth: nextAuction?.monthNumber ?? 1,
+    nextAuctionDate: nextAuction?.auctionDate ?? '', maxTicketsPerPerson: num(g.max_tickets_per_person), };
+}
+
+export const useApp = () => { const context = useContext(AppContext); if (!context) throw new Error('useApp must be used within an AppProvider'); return context; };

@@ -30,7 +30,6 @@ export default function CustomerPortalPage() {
     kycList,
     documents,
     tickets,
-    payInstallment,
     submitKYC,
     placeAuctionBid,
     createSupportTicket,
@@ -66,10 +65,10 @@ export default function CustomerPortalPage() {
     'overview' | 'chits' | 'kyc' | 'payments' | 'auctions' | 'documents' | 'support'
   >('overview');
   const [selectedInstalmentToPay, setSelectedInstalmentToPay] = useState<string | null>(null);
-  const [paymentMode, setPaymentMode] = useState<'UPI' | 'NET_BANKING' | 'DEBIT_CARD'>('UPI');
-  const [isProcessingPay, setIsProcessingPay] = useState(false);
   const [panInput, setPanInput] = useState<string | null>(null);
   const [aadhaarInput, setAadhaarInput] = useState<string | null>(null);
+  const [panFile, setPanFile] = useState<File | null>(null);
+  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
   const [bidDiscountInput, setBidDiscountInput] = useState<number>(15000);
   const [ticketSubject, setTicketSubject] = useState('');
   const [ticketCategory, setTicketCategory] = useState<'PAYMENT' | 'AUCTION' | 'KYC' | 'PAYOUT' | 'OTHER'>('PAYMENT');
@@ -99,26 +98,17 @@ export default function CustomerPortalPage() {
     );
   }
 
-  const handlePayNow = (installmentId: string) => {
-    setIsProcessingPay(true);
-    setTimeout(() => {
-      payInstallment(installmentId, paymentMode);
-      setIsProcessingPay(false);
-      setSelectedInstalmentToPay(null);
-    }, 1000);
-  };
-
   const handleKYCSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    submitKYC(panInput ?? myKYC?.panNumber ?? '', aadhaarInput ?? myKYC?.aadhaarNumber ?? '');
+    void submitKYC(panInput ?? myKYC?.panNumber ?? '', aadhaarInput ?? '', [panFile, aadhaarFile].filter((file): file is File => file !== null));
   };
 
-  const handleSupportSubmit = (e: React.FormEvent) => {
+  const handleSupportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketSubject || !ticketMessage) return;
-    createSupportTicket(ticketSubject, ticketCategory, ticketMessage);
-    setTicketSubject('');
-    setTicketMessage('');
+    if (await createSupportTicket(ticketSubject, ticketCategory, ticketMessage)) {
+      setTicketSubject(''); setTicketMessage('');
+    }
   };
 
   return (
@@ -224,7 +214,7 @@ export default function CustomerPortalPage() {
                     onClick={() => setSelectedInstalmentToPay(dueInstallments[0].id)}
                     className="bg-white text-amber-900 hover:bg-amber-50 font-bold text-xs px-5 py-3 rounded-xl shadow-lg transition-transform hover:scale-105"
                   >
-                    Pay via UPI
+                    Online payment setup pending
                   </button>
                 </div>
               </div>
@@ -242,7 +232,7 @@ export default function CustomerPortalPage() {
             <div className="bg-white p-6 rounded-[20px] border border-gray-200 space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-base text-gray-900">Enrolled Chit Schemes</h3>
-                <Link href="/#schemes" className="text-xs text-[#123d33] font-bold hover:underline">
+                <Link href="/schemes" className="text-xs text-[#123d33] font-bold hover:underline">
                   Browse More Schemes →
                 </Link>
               </div>
@@ -251,7 +241,7 @@ export default function CustomerPortalPage() {
                 <div className="p-8 text-center border border-dashed border-gray-200 rounded-2xl space-y-3">
                   <p className="text-xs text-gray-500">You have not enrolled in any chit scheme yet.</p>
                   <Link
-                    href="/#schemes"
+                    href="/schemes"
                     className="inline-block bg-[#123d33] text-white font-bold text-xs px-4 py-2 rounded-xl"
                   >
                     Explore & Enroll in a Scheme
@@ -360,7 +350,7 @@ export default function CustomerPortalPage() {
               </p>
             </div>
             <Link
-              href="/#schemes"
+              href="/schemes"
               className="bg-[#123d33] text-white font-bold text-xs px-4 py-2 rounded-xl text-center self-start sm:self-auto shadow-sm"
             >
               + Enroll in New Scheme
@@ -371,7 +361,7 @@ export default function CustomerPortalPage() {
             <div className="bg-white p-12 text-center rounded-[20px] border border-gray-200 text-gray-500 space-y-3">
               <p className="text-sm">You have not joined any chit schemes yet.</p>
               <Link
-                href="/#schemes"
+                href="/schemes"
                 className="inline-block bg-[#123d33] text-white font-bold text-xs px-5 py-2.5 rounded-xl"
               >
                 Browse Available Schemes
@@ -485,8 +475,8 @@ export default function CustomerPortalPage() {
                       </span>
                       {canTakeMore ? (
                         <button
-                          onClick={() => {
-                            const success = joinChitGroup(grp.id);
+                          onClick={async () => {
+                            const success = await joinChitGroup(grp.id);
                             if (success) {
                               alert(`Successfully enrolled for Ticket #${tickets.length + 1} in ${grp.groupName}!`);
                             }
@@ -548,7 +538,7 @@ export default function CustomerPortalPage() {
               <label className="font-bold text-gray-700 block mb-1">Aadhaar Card Number</label>
               <input
                 type="text"
-                value={aadhaarInput ?? myKYC?.aadhaarNumber ?? ''}
+                value={aadhaarInput ?? ''}
                 onChange={(e) => setAadhaarInput(e.target.value)}
                 placeholder="e.g. 1234 5678 9012"
                 className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-[#123d33]"
@@ -558,8 +548,10 @@ export default function CustomerPortalPage() {
 
             <div className="border border-dashed border-gray-300 p-6 rounded-2xl text-center space-y-2 bg-gray-50">
               <Upload className="w-8 h-8 text-gray-400 mx-auto" />
-              <p className="text-xs font-bold text-gray-700">Upload Identity Documents (PAN, Aadhaar, Bank Proof)</p>
+              <p className="text-xs font-bold text-gray-700">Upload PAN and Aadhaar documents</p>
               <p className="text-[11px] text-gray-400">PDF, JPG, PNG up to 10MB</p>
+              <label className="block text-xs text-gray-700">PAN document <input type="file" accept="application/pdf,image/jpeg,image/png" required onChange={e => setPanFile(e.target.files?.[0] ?? null)} /></label>
+              <label className="block text-xs text-gray-700">Aadhaar document <input type="file" accept="application/pdf,image/jpeg,image/png" required onChange={e => setAadhaarFile(e.target.files?.[0] ?? null)} /></label>
             </div>
 
             <button
@@ -636,7 +628,7 @@ export default function CustomerPortalPage() {
                               onClick={() => setSelectedInstalmentToPay(inst.id)}
                               className="bg-[#123d33] text-white hover:bg-[#123d33] px-3.5 py-1.5 rounded-lg font-bold text-[11px]"
                             >
-                              Pay Dues
+                              Payment setup pending
                             </button>
                           ) : (
                             <span className="text-gray-400">Paid on {inst.paidDate}</span>
@@ -765,7 +757,7 @@ export default function CustomerPortalPage() {
         <div className="bg-white rounded-[20px] p-6 border border-gray-200 space-y-4">
           <h2 className="text-xl font-bold text-gray-900">Digital Receipts & Documents</h2>
           {myDocs.length === 0 ? (
-            <p className="text-xs text-gray-500">No receipts generated yet. Pay monthly dues to view receipts.</p>
+            <p className="text-xs text-gray-500">No receipts have been issued yet.</p>
           ) : (
             <div className="space-y-3">
               {myDocs.map((doc) => (
@@ -872,7 +864,7 @@ export default function CustomerPortalPage() {
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-semibold text-xl text-gray-900">Pay Monthly Contribution</h3>
-                <p className="text-xs text-gray-500">RAKVIH Approved Payment Gateway</p>
+                <p className="text-xs text-gray-500">Online payment setup is pending</p>
               </div>
               <button
                 onClick={() => setSelectedInstalmentToPay(null)}
@@ -882,31 +874,8 @@ export default function CustomerPortalPage() {
               </button>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-gray-700 block">Select Payment Mode</label>
-              {['UPI', 'NET_BANKING', 'DEBIT_CARD'].map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPaymentMode(mode as typeof paymentMode)}
-                  className={`w-full p-3 rounded-2xl border text-xs font-bold text-left transition-all ${
-                    paymentMode === mode
-                      ? 'border-[#123d33] bg-[#f2f1e9] text-[#123d33]'
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  {mode.replace('_', ' ')} (Instant Confirmation)
-                </button>
-              ))}
-            </div>
-
-            <button
-              disabled={isProcessingPay}
-              onClick={() => handlePayNow(selectedInstalmentToPay)}
-              className="w-full bg-[#123d33] text-white hover:bg-[#123d33] font-bold text-sm py-3.5 rounded-2xl shadow-lg transition-all"
-            >
-              {isProcessingPay ? 'Processing Payment...' : 'Confirm & Generate PDF Receipt'}
-            </button>
+            <p className="text-sm text-gray-700">A verified payment gateway must be connected before online contributions can be accepted. No payment has been recorded.</p>
+            <button onClick={() => setSelectedInstalmentToPay(null)} className="w-full bg-[#123d33] text-white font-bold text-sm py-3.5 rounded-2xl">Close</button>
           </div>
         </div>
       )}

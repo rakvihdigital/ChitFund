@@ -11,8 +11,8 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const { adminLogin, adminUser } = useApp();
 
-  const [email, setEmail] = useState('admin@rakvih.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -27,15 +27,15 @@ export default function AdminLoginPage() {
     setErrorMsg('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      const success = adminLogin(email, password);
+    void (async () => {
+      const success = await adminLogin(email, password);
       if (success) {
         router.push('/admin');
       } else {
         setErrorMsg('Invalid administrator credentials.');
         setIsLoading(false);
       }
-    }, 400);
+    })();
   };
 
   return (
@@ -98,12 +98,6 @@ export default function AdminLoginPage() {
                 required
               />
             </div>
-          </div>
-
-          <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-900 space-y-0.5">
-            <p className="font-bold">Initial Administrator Credentials:</p>
-            <p className="text-amber-800">Email: <span className="font-mono font-bold">admin@rakvih.com</span></p>
-            <p className="text-amber-800">Password: <span className="font-mono font-bold">admin123</span></p>
           </div>
 
           <button

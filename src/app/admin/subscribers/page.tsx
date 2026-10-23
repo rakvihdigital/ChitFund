@@ -5,18 +5,17 @@ import { useApp } from '@/lib/store';
 import { Users, UserPlus } from 'lucide-react';
 
 export default function AdminSubscribersPage() {
-  const { subscribers, groups, joinChitGroup } = useApp();
+  const { subscribers, groups, customers, joinChitGroup } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '');
-  const [subscriberName, setSubscriberName] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
 
-  const handleEnrollManual = (e: React.FormEvent) => {
+  const handleEnrollManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedGroupId) return;
-    joinChitGroup(selectedGroupId, `cust-manual-${Date.now()}`);
-    setShowAddModal(false);
-    setSubscriberName('');
+    const groupId = selectedGroupId || groups[0]?.id;
+    if (!groupId || !selectedCustomerId) return;
+    if (await joinChitGroup(groupId, selectedCustomerId)) setShowAddModal(false);
   };
 
   return (
@@ -104,7 +103,7 @@ export default function AdminSubscribersPage() {
               <div>
                 <label className="font-bold text-gray-700 block mb-1">Select Chit Scheme</label>
                 <select
-                  value={selectedGroupId}
+                  value={selectedGroupId || groups[0]?.id || ''}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
                   className="w-full border border-gray-300 rounded-xl p-3 outline-none"
                   required
@@ -118,15 +117,11 @@ export default function AdminSubscribersPage() {
               </div>
 
               <div>
-                <label className="font-bold text-gray-700 block mb-1">Subscriber Full Name</label>
-                <input
-                  type="text"
-                  value={subscriberName}
-                  onChange={(e) => setSubscriberName(e.target.value)}
-                  placeholder="e.g. Ramesh Kumar"
-                  className="w-full border border-gray-300 rounded-xl p-3 outline-none"
-                  required
-                />
+                <label className="font-bold text-gray-700 block mb-1">Registered Customer</label>
+                <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className="w-full border border-gray-300 rounded-xl p-3 outline-none" required>
+                  <option value="">Select a customer</option>
+                  {customers.map(customer => <option key={customer.id} value={customer.id}>{customer.fullName} ({customer.email})</option>)}
+                </select>
               </div>
 
               <button

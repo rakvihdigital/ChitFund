@@ -5,17 +5,15 @@ import { useApp } from '@/lib/store';
 import { FileCheck } from 'lucide-react';
 
 export default function AdminKYCPage() {
-  const { kycList, approveKYC, rejectKYC } = useApp();
+  const { kycList, approveKYC, rejectKYC, openKYCDocument } = useApp();
 
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const handleRejectSubmit = (e: React.FormEvent) => {
+  const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectId || !rejectReason.trim()) return;
-    rejectKYC(rejectId, rejectReason);
-    setRejectId(null);
-    setRejectReason('');
+    if (await rejectKYC(rejectId, rejectReason)) { setRejectId(null); setRejectReason(''); }
   };
 
   return (
@@ -68,6 +66,10 @@ export default function AdminKYCPage() {
                 </div>
 
                 <p className="text-[11px] text-gray-400">Submitted on: {k.submittedAt}</p>
+                <div className="flex flex-wrap gap-2">
+                  {k.documents.map(document => <button key={document.fileUrl} type="button" onClick={() => void openKYCDocument(document.fileUrl)} className="rounded-lg border border-gray-300 px-3 py-1 text-[#123d33] underline">View {document.type.replace('_', ' ')}</button>)}
+                </div>
+                {k.documents.length === 0 && <p className="text-red-700">No identity documents uploaded. Do not approve without verification.</p>}
                 {k.rejectionReason && (
                   <p className="text-xs text-red-600 font-semibold">Rejection Note: {k.rejectionReason}</p>
                 )}
@@ -77,6 +79,7 @@ export default function AdminKYCPage() {
                 <div className="flex space-x-2">
                   <button
                     onClick={() => approveKYC(k.id)}
+                    disabled={k.documents.length < 2}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm"
                   >
                     Approve KYC

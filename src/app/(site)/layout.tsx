@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useApp } from "@/lib/store";
 import { Menu, X } from "lucide-react";
 import { CustomerAuthModal } from "@/components/CustomerAuthModal";
@@ -13,6 +14,7 @@ export default function SiteLayout({
   children: React.ReactNode;
 }) {
   const { customerUser, customerLogout, openAuthModal } = useApp();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -39,10 +41,11 @@ export default function SiteLayout({
     };
   }, [menuOpen]);
   const links = [
-    ["Chit schemes", "/#schemes"],
-    ["How it works", "/#how-it-works"],
-    ["Savings calculator", "/#calculator"],
-    ["About us", "/#about"],
+    ["Home", "/"],
+    ["Chit schemes", "/schemes"],
+    ["How it works", "/how-it-works"],
+    ["Savings calculator", "/calculator"],
+    ["About us", "/about"],
   ];
   return (
     <div className="premium-site">
@@ -61,7 +64,7 @@ export default function SiteLayout({
           </Link>
           <nav className="desktop-nav" aria-label="Main navigation">
             {links.map(([label, href]) => (
-              <Link key={href} href={href}>
+              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined}>
                 {label}
               </Link>
             ))}
@@ -134,7 +137,7 @@ export default function SiteLayout({
           <span className="mobile-menu-label">EXPLORE RAKVIH</span>
           <nav className="mobile-menu-links" aria-label="Mobile navigation">
             {links.map(([label, href]) => (
-              <Link key={href} href={href} onClick={() => setMenuOpen(false)}>
+              <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} onClick={() => setMenuOpen(false)}>
                 {label}
               </Link>
             ))}
@@ -190,9 +193,11 @@ export default function SiteLayout({
             <div className="footer-navigation-col" data-home-reveal="up">
               <div className="footer-link-col">
                 <span className="eyebrow">EXPLORE</span>
-                <Link href="/#schemes">Chit schemes</Link>
-                <Link href="/#calculator">Savings calculator</Link>
-                <Link href="/#how-it-works">How it works</Link>
+                <Link href="/">Home</Link>
+                <Link href="/schemes">Chit schemes</Link>
+                <Link href="/calculator">Savings calculator</Link>
+                <Link href="/how-it-works">How it works</Link>
+                <Link href="/about">About us</Link>
               </div>
               <div className="footer-link-col">
                 <span className="eyebrow">YOUR RAKVIH</span>

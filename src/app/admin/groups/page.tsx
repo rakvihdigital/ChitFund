@@ -13,9 +13,9 @@ export default function AdminGroupsPage() {
   const [durationMonths, setDurationMonths] = useState<number>(20);
   const [maxTicketsPerPerson, setMaxTicketsPerPerson] = useState<number>(3);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    createChitGroup({
+    const created = await createChitGroup({
       groupName: groupName || `RAKVIH Scheme ₹${totalValue.toLocaleString()}`,
       totalValue,
       durationMonths,
@@ -23,8 +23,7 @@ export default function AdminGroupsPage() {
       totalMembers: durationMonths,
       maxTicketsPerPerson
     });
-    setShowModal(false);
-    setGroupName('');
+    if (created) { setShowModal(false); setGroupName(''); }
   };
 
   return (

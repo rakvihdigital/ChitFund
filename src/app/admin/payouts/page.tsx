@@ -5,10 +5,9 @@ import { useApp } from '@/lib/store';
 import { Lock, FileCheck } from 'lucide-react';
 
 export default function AdminPayoutsPage() {
-  const { payouts, makerApprovePayout, checkerReleasePayout } = useApp();
+  const { payouts, makerApprovePayout } = useApp();
 
   const [makerNotes, setMakerNotes] = useState('');
-  const [checkerNotes, setCheckerNotes] = useState('');
 
   const pendingMaker = payouts.filter(
     (p) => p.status === 'GUARANTOR_PENDING' || p.status === 'REQUESTED'
@@ -62,9 +61,8 @@ export default function AdminPayoutsPage() {
                   </div>
 
                   <button
-                    onClick={() => {
-                      makerApprovePayout(p.id, makerNotes || 'Guarantors verified');
-                      setMakerNotes('');
+                    onClick={async () => {
+                      if (await makerApprovePayout(p.id, makerNotes || 'Guarantors verified')) setMakerNotes('');
                     }}
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-xs"
                   >
@@ -100,26 +98,7 @@ export default function AdminPayoutsPage() {
                   </div>
                   <p className="text-gray-600">Maker Notes: {p.makerNotes}</p>
 
-                  <div>
-                    <label className="font-bold text-gray-700 block mb-1">Checker Authorization Notes</label>
-                    <input
-                      type="text"
-                      value={checkerNotes}
-                      onChange={(e) => setCheckerNotes(e.target.value)}
-                      placeholder="e.g. Bank settlement authorized via RTGS"
-                      className="w-full border border-gray-300 rounded-xl p-2.5 outline-none bg-white"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      checkerReleasePayout(p.id, checkerNotes || 'Released via Bank Transfer');
-                      setCheckerNotes('');
-                    }}
-                    className="w-full bg-[#123d33] hover:bg-[#0b2e26] text-white font-bold py-2.5 rounded-xl transition-all shadow-xs"
-                  >
-                    Authorize & Disburse Bank Payout
-                  </button>
+                  <p className="rounded-xl bg-white p-3 text-gray-700">Bank transfer confirmation is not connected. This payout has not been disbursed.</p>
                 </div>
               ))}
             </div>
