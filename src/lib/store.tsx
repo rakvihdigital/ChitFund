@@ -2,21 +2,27 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabase';
+import { msg, useT } from './i18n';
 import type {
   UserProfile, CustomerKYC, BankAccount, Nominee, ChitGroup, ChitSubscriber,
   Installment, PaymentRecord, AuctionEvent, PayoutRequest, DigitalDocument,
-  NotificationItem, LedgerEntry, SupportTicket, AuditLogEntry, UserRole,
+  NotificationItem, LedgerEntry, SupportTicket, AuditLogEntry, UserRole, ChitAgreement,
+  KycSubmission, KycFileType,
 } from './types';
 
 type Row = Record<string, unknown>;
 type AsyncAction = Promise<boolean>;
-type SignUpResult = 'signed-in' | 'confirm-email' | false;
+// true on success, otherwise the message to show the customer
+type AuthResult = true | string;
 type PaymentMode = 'UPI' | 'NET_BANKING' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'BANK_TRANSFER';
 type TicketCategory = 'PAYMENT' | 'AUCTION' | 'KYC' | 'PAYOUT' | 'OTHER';
 const str = (value: unknown) => value == null ? '' : String(value);
 const num = (value: unknown) => Number(value ?? 0);
 const date = (value: unknown) => str(value).slice(0, 10);
 const stamp = (value: unknown) => str(value).replace('T', ' ').slice(0, 16);
+// Fills {name} placeholders; the template stays the translation key, so the shown message can be translated back
+const format = (template: string, vars: Record<string, string>) => template.replace(/\{(\w+)\}/g, (_, name: string) => vars[name] ?? '');
+const AUDIT_LOG_LIMIT = 500;
 // Audit details are either { field: { from, to } } for updates or the whole row for creates/deletes
 const auditDetails = (value: unknown) => {
   if (!value || typeof value !== 'object') return str(value);
@@ -33,7 +39,8 @@ async function loadRows(name: string): Promise<Row[]> {
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase.from(name).select('*').order('id').range(offset, offset + 999);
     if (error) {
-      if (name === 'admin_users') return [];
+      // Tables from optional migrations load as empty until those migrations are applied
+      if (name === 'admin_users' || name === 'chit_agreements') return [];
       throw new Error(`${name}: ${error.message}`);
     }
     const batch = (data ?? []) as Row[];
@@ -41,6 +48,72 @@ async function loadRows(name: string): Promise<Row[]> {
     if (batch.length < 1000) return all;
   }
 }
+
+const ANY_DOCUMENT = ['application/pdf', 'image/jpeg', 'image/png'];
+const IMAGE_ONLY = ['image/jpeg', 'image/png'];
+const KYC_FILES: { type: KycFileType; label: string; accept: string[] }[] = [
+  { type: 'PAN_CARD', label: msg('PAN card'), accept: ANY_DOCUMENT },
+  { type: 'AADHAAR_FRONT', label: msg('Aadhaar front'), accept: ANY_DOCUMENT },
+  { type: 'AADHAAR_BACK', label: msg('Aadhaar back'), accept: ANY_DOCUMENT },
+  { type: 'PHOTOGRAPH', label: msg('Photograph'), accept: IMAGE_ONLY },
+  { type: 'BANK_PROOF', label: msg('Cancelled cheque'), accept: ANY_DOCUMENT },
+];
+const fileProblem = (file: File | null, label: string, accept: string[]) => {
+  if (!file) return format(msg('Select your {label} file.'), { label });
+  if (!accept.includes(file.type)) return format(accept === IMAGE_ONLY ? msg('Your {label} must be a JPG or PNG image.') : msg('Your {label} must be a PDF, JPG or PNG file.'), { label });
+  if (file.size > 10 * 1024 * 1024) return format(msg('Your {label} file must be 10 MB or smaller.'), { label });
+  return '';
+};
+const validateKYC = ({ pan, aadhaar, files }: KycSubmission) => {
+  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.trim().toUpperCase())) return msg('Enter a valid 10-character PAN (e.g. ABCDE1234F).');
+  if (aadhaar.replace(/\D/g, '').length !== 12) return msg('Enter your 12-digit Aadhaar number.');
+  for (const { type, label, accept } of KYC_FILES) {
+    const problem = fileProblem(files[type], label, accept);
+    if (problem) return problem;
+  }
+  return '';
+};
+// Files go in the private bucket under the owner's folder, which the storage policies require
+async function uploadPrivateFile(userId: string, file: File) {
+  const path = `${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const uploaded = await supabase.storage.from('kyc-documents').upload(path, file, { contentType: file.type });
+  if (uploaded.error) throw uploaded.error;
+  return path;
+}
+// Saves the KYC details and documents, replacing any earlier submission, and queues them for approval
+async function uploadKYC(userId: string, { pan, aadhaar, files }: KycSubmission) {
+  const { data: kyc, error } = await supabase.from('customer_kyc').upsert({ user_id: userId,
+    pan_number: pan.trim().toUpperCase(), aadhaar_last4: aadhaar.replace(/\D/g, '').slice(-4), status: 'NOT_SUBMITTED',
+    verified_by: null, verified_at: null, submitted_at: null, rejection_reason: null }, { onConflict: 'user_id' }).select('id').single();
+  if (error) throw error.code === '23505' ? new Error(msg('This PAN is already registered with another account.')) : error;
+  const { data: previous } = await supabase.from('kyc_documents').select('file_path').eq('kyc_id', kyc.id);
+  if (previous?.length) {
+    await supabase.storage.from('kyc-documents').remove(previous.map(d => str(d.file_path)));
+    const removed = await supabase.from('kyc_documents').delete().eq('kyc_id', kyc.id);
+    if (removed.error) throw removed.error;
+  }
+  for (const { type } of KYC_FILES) {
+    const file = files[type] as File;
+    const document = await supabase.from('kyc_documents').insert({
+      kyc_id: kyc.id, document_type: type, file_path: await uploadPrivateFile(userId, file),
+      file_name: file.name, mime_type: file.type,
+    });
+    if (document.error) throw document.error;
+  }
+  const submitted = await supabase.from('customer_kyc').update({ status: 'PENDING_APPROVAL', submitted_at: new Date().toISOString() }).eq('id', kyc.id);
+  if (submitted.error) throw submitted.error;
+}
+// Customers can only sign in once a KYC officer has approved their registration
+const approvalBlock = (kyc: Row | null) => {
+  switch (kyc?.status) {
+    case 'VERIFIED': return '';
+    case 'PENDING_APPROVAL': return msg('Your registration is waiting for admin approval. You can sign in once your KYC is approved.');
+    case 'REJECTED': return format(msg('Your KYC was rejected: {reason}. Register again with the same email and password to resubmit your documents.'), { reason: str(kyc.rejection_reason) });
+    default: return msg('Your KYC documents were not received. Register again with the same email and password to upload them.');
+  }
+};
+const ownKYC = async (userId: string) =>
+  (await supabase.from('customer_kyc').select('status,rejection_reason').eq('user_id', userId).maybeSingle()).data as Row | null;
 
 interface AppContextType {
   isLoaded: boolean;
@@ -51,8 +124,8 @@ interface AppContextType {
   authModalMode: 'signin' | 'signup';
   openAuthModal: (mode?: 'signin' | 'signup') => void;
   closeAuthModal: () => void;
-  customerLogin: (email: string, password: string) => AsyncAction;
-  customerSignUp: (name: string, email: string, phone: string, password: string) => Promise<SignUpResult>;
+  customerLogin: (email: string, password: string) => Promise<AuthResult>;
+  customerSignUp: (name: string, email: string, phone: string, password: string, kyc: KycSubmission) => Promise<AuthResult>;
   customerLogout: () => Promise<void>;
   adminLogin: (email: string, password: string) => AsyncAction;
   adminLogout: () => Promise<void>;
@@ -63,6 +136,7 @@ interface AppContextType {
   kycList: CustomerKYC[];
   bankAccounts: BankAccount[];
   nominees: Nominee[];
+  agreements: ChitAgreement[];
   auctions: AuctionEvent[];
   payouts: PayoutRequest[];
   documents: DigitalDocument[];
@@ -73,10 +147,16 @@ interface AppContextType {
   customers: UserProfile[];
   createChitGroup: (group: Partial<ChitGroup>) => AsyncAction;
   deleteChitGroup: (id: string) => AsyncAction;
-  joinChitGroup: (id: string, userId?: string) => AsyncAction;
-  submitKYC: (pan: string, aadhaar: string, files: File[]) => AsyncAction;
+  joinChitGroup: (id: string, signedName: string) => AsyncAction;
+  staffEnrollSubscriber: (groupId: string, userId: string) => AsyncAction;
   approveKYC: (id: string) => AsyncAction;
   rejectKYC: (id: string, reason: string) => AsyncAction;
+  addBankAccount: (account: Omit<BankAccount, 'id' | 'userId' | 'isVerified' | 'proofPath' | 'rejectionReason'>, proof: File | null) => AsyncAction;
+  removeBankAccount: (id: string) => AsyncAction;
+  verifyBankAccount: (id: string) => AsyncAction;
+  rejectBankAccount: (id: string, reason: string) => AsyncAction;
+  addNominee: (nominee: Omit<Nominee, 'id' | 'userId'>) => AsyncAction;
+  removeNominee: (id: string) => AsyncAction;
   payInstallment: (id: string, mode: PaymentMode) => AsyncAction;
   scheduleAuction: (groupId: string, month: number, when: string) => AsyncAction;
   placeAuctionBid: (auctionId: string, amount: number) => AsyncAction;
@@ -98,6 +178,7 @@ const profile = (row: Row): UserProfile => ({
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useT();
   const [isLoaded, setIsLoaded] = useState(false);
   const [operationError, setOperationError] = useState('');
   const [customerUser, setCustomerUser] = useState<UserProfile | null>(null);
@@ -111,6 +192,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [kycList, setKycList] = useState<CustomerKYC[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [nominees, setNominees] = useState<Nominee[]>([]);
+  const [agreements, setAgreements] = useState<ChitAgreement[]>([]);
   const [auctions, setAuctions] = useState<AuctionEvent[]>([]);
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [documents, setDocuments] = useState<DigitalDocument[]>([]);
@@ -125,31 +207,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError && authError.name !== 'AuthSessionMissingError') throw authError;
     const userId = authData.user?.id;
-    if (!userId) {
+    const showSignedOut = () => {
       setCustomerUser(null); setAdminUser(null); setCustomers([]);
       setSubscribers([]); setInstallments([]); setPayments([]); setKycList([]);
-      setBankAccounts([]); setNominees([]); setAuctions([]); setPayouts([]);
+      setBankAccounts([]); setNominees([]); setAgreements([]); setAuctions([]); setPayouts([]);
       setDocuments([]); setNotifications([]); setLedger([]); setTickets([]); setAuditLogs([]);
       setGroups(groupRows.map(g => mapGroup(g, 0, null)));
-      return;
-    }
+    };
+    if (!userId) { showSignedOut(); return; }
 
     const { data: adminRow } = await supabase.from('admin_users').select('*').eq('id', userId).maybeSingle();
     let currentAdmin: UserProfile | null = null;
     let currentCustomer: UserProfile | null = null;
     if (adminRow) {
-      if (!adminRow.is_active) throw new Error('This account is inactive. Contact the administrator.');
+      if (!adminRow.is_active) throw new Error(msg('This account is inactive. Contact the administrator.'));
       currentAdmin = profile(adminRow as Row);
     } else {
       const { data: own, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (profileError) throw profileError;
       if (own) {
-        if (!own.is_active) throw new Error('This account is inactive. Contact the administrator.');
+        if (!own.is_active) throw new Error(msg('This account is inactive. Contact the administrator.'));
         const current = profile(own as Row);
-        if (current.role === 'CUSTOMER') currentCustomer = current;
+        if (current.role === 'CUSTOMER' && !approvalBlock(await ownKYC(userId))) currentCustomer = current;
         if (staffRoles.includes(current.role)) currentAdmin = current;
       }
     }
+    // A customer whose KYC is not approved yet is treated as signed out
+    if (!currentCustomer && !currentAdmin) { showSignedOut(); return; }
     setCustomerUser(currentCustomer);
     setAdminUser(currentAdmin);
 
@@ -157,9 +241,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'admin_users', 'profiles', 'chit_subscribers', 'installments', 'payments', 'customer_kyc',
       'kyc_documents', 'customer_bank_accounts', 'nominees', 'auctions', 'auction_bids',
       'prizes', 'payouts', 'payout_approvals', 'guarantors', 'documents', 'notifications',
-      'ledger_entries', 'support_tickets', 'support_ticket_messages', 'audit_logs',
+      'ledger_entries', 'support_tickets', 'support_ticket_messages', 'chit_agreements',
     ] as const;
-    const results = await Promise.all(names.map(loadRows));
+    // The audit log grows with every change, so only the latest entries are loaded
+    const [results, audit] = await Promise.all([
+      Promise.all(names.map(loadRows)),
+      supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(AUDIT_LOG_LIMIT),
+    ]);
+    if (audit.error) throw new Error(`audit_logs: ${audit.error.message}`);
     const rows = Object.fromEntries(names.map((name, index) => [name, results[index]])) as Record<typeof names[number], Row[]>;
     const adminUsers = (rows.admin_users ?? []).map(profile);
     const profiles = rows.profiles.map(profile);
@@ -194,6 +283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: str(b.id), userId: str(b.user_id), accountHolder: str(b.account_holder_name),
       accountNumber: str(b.account_number), ifscCode: str(b.ifsc_code), bankName: str(b.bank_name),
       branch: str(b.branch_name), isVerified: Boolean(b.is_verified),
+      proofPath: str(b.proof_path), rejectionReason: str(b.rejection_reason),
     }));
     const auctionsMapped: AuctionEvent[] = rows.auctions.map(a => {
       const group = groupFor(a.group_id);
@@ -240,6 +330,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
     setBankAccounts(bankMapped);
+    setAgreements(rows.chit_agreements.map(a => {
+      const terms = (a.terms ?? {}) as Row;
+      return { id: str(a.id), subscriberId: str(a.subscriber_id), groupId: str(a.group_id), userId: str(a.user_id),
+        version: str(a.agreement_version), signedName: str(a.signed_name), signedAt: stamp(a.signed_at),
+        terms: { groupCode: str(terms.group_code), groupName: str(terms.group_name), totalValue: num(terms.total_value),
+          durationMonths: num(terms.duration_months), monthlyContribution: num(terms.monthly_contribution),
+          totalMembers: num(terms.total_members), foremanCommissionPercent: num(terms.foreman_commission_percent),
+          minBidPercent: num(terms.min_bid_discount_percent), maxBidPercent: num(terms.max_bid_discount_percent),
+          startDate: date(terms.start_date), seatNumber: num(terms.seat_number) } };
+    }));
     setNominees(rows.nominees.map(n => ({ id: str(n.id), userId: str(n.user_id), name: str(n.nominee_name),
       relationship: str(n.relationship), phone: str(n.phone_number), idProofNumber: str(n.id_proof_number) })));
     setAuctions(auctionsMapped);
@@ -252,7 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         winnerPhone: profiles.find(x => x.id === winner?.userId)?.phone ?? '',
         monthNumber: auctionsMapped.find(a => a.id === prize?.auction_id)?.monthNumber ?? 0,
         prizeAmount: num(prize?.net_payout_amount), status: str(p.status) as PayoutRequest['status'],
-        bankDetails: bankMapped.find(b => b.id === p.bank_account_id) ?? { id: '', userId: winner?.userId ?? '', accountHolder: '', accountNumber: '', ifscCode: '', bankName: '', branch: '', isVerified: false },
+        bankDetails: bankMapped.find(b => b.id === p.bank_account_id) ?? { id: '', userId: winner?.userId ?? '', accountHolder: '', accountNumber: '', ifscCode: '', bankName: '', branch: '', isVerified: false, proofPath: '' },
         guarantors: rows.guarantors.filter(g => g.payout_id === p.id).map(g => ({ id: str(g.id), payoutId: str(p.id), name: str(g.guarantor_name), phone: str(g.phone_number), relationship: str(g.relationship), occupation: str(g.occupation), monthlyIncome: num(g.monthly_income), documentType: str(g.document_type) as PayoutRequest['guarantors'][number]['documentType'], documentRef: str(g.document_ref), verified: Boolean(g.verified) })),
         makerUserId: str(approval?.maker_user_id), makerApprovedAt: stamp(approval?.maker_approved_at), makerNotes: str(approval?.maker_notes),
         checkerUserId: str(approval?.checker_user_id), checkerApprovedAt: stamp(approval?.checker_approved_at), checkerNotes: str(approval?.checker_notes),
@@ -273,7 +373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       priority: str(t.priority) as SupportTicket['priority'], status: str(t.status) as SupportTicket['status'],
       messages: rows.support_ticket_messages.filter(m => m.ticket_id === t.id).map(m => ({ sender: str(m.sender_type) as 'CUSTOMER' | 'SUPPORT', senderName: nameFor(m.sender_id), text: str(m.message), timestamp: stamp(m.created_at) })),
       createdAt: stamp(t.created_at), updatedAt: stamp(t.updated_at) })));
-    setAuditLogs([...rows.audit_logs].sort((a, b) => str(b.created_at).localeCompare(str(a.created_at))).map(a => ({
+    setAuditLogs(((audit.data ?? []) as Row[]).map(a => ({
       id: str(a.id), actorId: str(a.actor_id), actorName: a.actor_id ? nameFor(a.actor_id) : 'System',
       actorRole: str(a.actor_role) as UserRole, action: str(a.action), resourceType: str(a.resource_type),
       resourceId: str(a.resource_id), ipAddress: str(a.ip_address), details: auditDetails(a.details), timestamp: stamp(a.created_at) })));
@@ -281,7 +381,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     let active = true;
-    const load = () => refresh().catch(error => { if (active) setOperationError(error.message ?? 'Database loading failed'); })
+    const load = () => refresh().catch(error => { if (active) setOperationError(error.message ?? msg('Database loading failed')); })
       .finally(() => { if (active) setIsLoaded(true); });
     void load();
     const { data: listener } = supabase.auth.onAuthStateChange(() => { window.setTimeout(() => { if (active) void load(); }, 0); });
@@ -290,50 +390,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const mutate = async (action: () => Promise<void>): AsyncAction => {
     try { setOperationError(''); await action(); await refresh(); return true; }
-    catch (error) { setOperationError(error instanceof Error ? error.message : 'Database request failed'); return false; }
+    catch (error) { setOperationError(error instanceof Error ? error.message : msg('Database request failed')); return false; }
   };
   const fail = (message: string): AsyncAction => { setOperationError(message); return Promise.resolve(false); };
-  const signIn = async (email: string, password: string, staff: boolean): AsyncAction => mutate(async () => {
+  const adminLogin = (email: string, password: string): AsyncAction => mutate(async () => {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw error;
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? '';
 
-    if (staff) {
-      const { data: adminRow } = await supabase.from('admin_users').select('role,is_active').eq('id', uid).maybeSingle();
-      if (adminRow) {
-        if (!adminRow.is_active || !staffRoles.includes(adminRow.role as UserRole)) {
-          await supabase.auth.signOut();
-          throw new Error('This account has no staff access.');
-        }
-        return;
-      }
-      const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', uid).maybeSingle();
-      if (profileError || !row || !row.is_active || !staffRoles.includes(row.role as UserRole)) {
+    const { data: adminRow } = await supabase.from('admin_users').select('role,is_active').eq('id', uid).maybeSingle();
+    if (adminRow) {
+      if (!adminRow.is_active || !staffRoles.includes(adminRow.role as UserRole)) {
         await supabase.auth.signOut();
         throw new Error('This account has no staff access.');
       }
-    } else {
-      const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', uid).maybeSingle();
-      if (profileError || !row || !row.is_active || row.role !== 'CUSTOMER') {
-        await supabase.auth.signOut();
-        throw new Error('Use the staff sign-in for this account.');
-      }
+      return;
+    }
+    const { data: row, error: profileError } = await supabase.from('profiles').select('role,is_active').eq('id', uid).maybeSingle();
+    if (profileError || !row || !row.is_active || !staffRoles.includes(row.role as UserRole)) {
+      await supabase.auth.signOut();
+      throw new Error('This account has no staff access.');
     }
   });
-  const customerLogin = (email: string, password: string) => signIn(email, password, false);
-  const adminLogin = (email: string, password: string) => signIn(email, password, true);
-  const customerSignUp = async (name: string, email: string, phone: string, password: string): Promise<SignUpResult> => {
+  // Signs in, returning the message to show if the account can't use the portal (yet)
+  const customerSession = async (email: string, password: string): Promise<AuthResult> => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) return error.code === 'invalid_credentials' ? msg('Invalid email or password.') : error.message;
+    const { data: row } = await supabase.from('profiles').select('role,is_active').eq('id', data.user.id).maybeSingle();
+    if (!row || row.role !== 'CUSTOMER') return msg('Use the staff sign-in for this account.');
+    if (!row.is_active) return msg('This account is inactive. Contact the administrator.');
+    return true;
+  };
+  const customerLogin = async (email: string, password: string): Promise<AuthResult> => {
     setOperationError('');
+    const session = await customerSession(email, password);
+    const { data: auth } = await supabase.auth.getUser();
+    const blocked = session === true ? approvalBlock(await ownKYC(auth.user?.id ?? '')) : session;
+    if (blocked) { await supabase.auth.signOut(); await refresh().catch(() => {}); return blocked; }
+    try { await refresh(); return true; }
+    catch (loadError) { return loadError instanceof Error ? loadError.message : msg('Unable to load account'); }
+  };
+  // Registration uploads the KYC documents, then signs out until an admin approves them.
+  // Registering again with the same email and password resubmits KYC for a rejected or incomplete account.
+  const customerSignUp = async (name: string, email: string, phone: string, password: string, kyc: KycSubmission): Promise<AuthResult> => {
+    setOperationError('');
+    const invalid = validateKYC(kyc);
+    if (invalid) return invalid;
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password,
       options: { data: { full_name: name.trim(), phone_number: phone.trim() } } });
-    if (error) { setOperationError(error.message); return false; }
-    if (!data.session) {
-      const { data: loginData } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (!loginData?.session) return 'confirm-email';
+    const exists = error?.code === 'user_already_exists' || error?.code === 'email_exists';
+    if (error && !exists) return error.message;
+    try {
+      if (!data.session) {
+        const session = await customerSession(email, password);
+        if (session !== true) return exists && session === msg('Invalid email or password.') ? msg('An account with this email already exists. Sign in instead.') : session;
+      }
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id ?? '';
+      const status = (await ownKYC(userId))?.status;
+      if (status === 'VERIFIED') return msg('This account is already approved. Please sign in.');
+      await uploadKYC(userId, kyc);
+      return true;
+    } catch (uploadError) {
+      return format(msg('{error} — please try again with the same email and password.'), { error: uploadError instanceof Error ? uploadError.message : msg('KYC upload failed') });
+    } finally {
+      await supabase.auth.signOut();
+      await refresh().catch(() => {});
     }
-    try { await refresh(); return 'signed-in'; }
-    catch (loadError) { setOperationError(loadError instanceof Error ? loadError.message : 'Unable to load account'); return false; }
   };
   const signOut = async () => { const { error } = await supabase.auth.signOut(); if (error) setOperationError(error.message); await refresh().catch(() => {}); };
   const openAuthModal = useCallback((mode: 'signin' | 'signup' = 'signup') => { setAuthModalMode(mode); setAuthModalOpen(true); }, []);
@@ -343,8 +467,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const total = group.totalValue ?? 100000; const members = group.totalMembers ?? group.durationMonths ?? 20;
     const contribution = total / members;
     const { error } = await supabase.from('chit_groups').insert({
-      group_code: group.groupCode ?? `RAK-${Math.round(total / 1000)}K-${Date.now().toString(36).slice(-6)}`,
-      group_name: group.groupName ?? `RAKVIH Scheme ₹${total}`, total_value: total, duration_months: members,
+      group_code: group.groupCode ?? `CF-${Math.round(total / 1000)}K-${Date.now().toString(36).slice(-6)}`,
+      group_name: group.groupName ?? `ChitFund Scheme ₹${total}`, total_value: total, duration_months: members,
       monthly_contribution: contribution, total_members: members, max_tickets_per_person: group.maxTicketsPerPerson ?? 3,
       start_date: group.startDate ?? new Date().toISOString().slice(0, 10), status: 'RECRUITING', created_by: adminUser?.id,
     });
@@ -353,48 +477,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteChitGroup = (id: string) => mutate(async () => {
     const { error } = await supabase.from('chit_groups').delete().eq('id', id); if (error) throw error;
   });
-  const joinChitGroup = (id: string, userId?: string): AsyncAction => {
-    return mutate(async () => {
-      const { error } = userId
-        ? await supabase.rpc('staff_join_chit_group', { p_group_id: id, p_user_id: userId })
-        : await supabase.rpc('join_chit_group', { p_group_id: id });
-      if (error) throw error;
-    });
-  };
-  const submitKYC = (pan: string, aadhaar: string, files: File[]): AsyncAction => {
-    if (!customerUser) return fail('Sign in before submitting KYC.');
-    if (files.length !== 2) return fail('Select a PAN document and an Aadhaar document before submitting KYC.');
-    if (files.some(file => file.size > 10 * 1024 * 1024 || !['application/pdf', 'image/jpeg', 'image/png'].includes(file.type))) return fail('Use PDF, JPG or PNG files up to 10 MB each.');
-    const digits = aadhaar.replace(/\D/g, '');
-    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase()) || digits.length !== 12) return fail('Enter a valid PAN and 12-digit Aadhaar number.');
-    return mutate(async () => {
-      const { data: kyc, error } = await supabase.from('customer_kyc').upsert({ user_id: customerUser.id,
-        pan_number: pan.toUpperCase(), aadhaar_last4: digits.slice(-4), status: 'NOT_SUBMITTED',
-        verified_by: null, verified_at: null, submitted_at: null, rejection_reason: null }, { onConflict: 'user_id' }).select('id').single();
-      if (error) throw error;
-      for (const [index, file] of files.entries()) {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const path = `${customerUser.id}/${crypto.randomUUID()}-${safeName}`;
-        const uploaded = await supabase.storage.from('kyc-documents').upload(path, file, { contentType: file.type });
-        if (uploaded.error) throw uploaded.error;
-        const document = await supabase.from('kyc_documents').insert({
-          kyc_id: kyc.id, document_type: index === 0 ? 'PAN_CARD' : 'AADHAAR_FRONT',
-          file_path: path, file_name: file.name, mime_type: file.type,
-        });
-        if (document.error) throw document.error;
-      }
-      const submitted = await supabase.from('customer_kyc').update({ status: 'PENDING_APPROVAL', submitted_at: new Date().toISOString() }).eq('id', kyc.id);
-      if (submitted.error) throw submitted.error;
-    });
-  };
+  // The customer signs the chit agreement by typing their full name; the database records it with the ticket
+  const joinChitGroup = (id: string, signedName: string) => mutate(async () => {
+    const { error } = await supabase.rpc('join_chit_group', { p_group_id: id, p_signed_name: signedName.trim() });
+    if (error) throw error;
+  });
+  const staffEnrollSubscriber = (groupId: string, userId: string) => mutate(async () => {
+    const { error } = await supabase.rpc('staff_join_chit_group', { p_group_id: groupId, p_user_id: userId });
+    if (error) throw error;
+  });
   const approveKYC = (id: string) => mutate(async () => { const { error } = await supabase.from('customer_kyc').update({ status: 'VERIFIED', verified_by: adminUser?.id, verified_at: new Date().toISOString() }).eq('id', id); if (error) throw error; });
   const rejectKYC = (id: string, reason: string) => mutate(async () => { const { error } = await supabase.from('customer_kyc').update({ status: 'REJECTED', rejection_reason: reason, verified_by: adminUser?.id, verified_at: new Date().toISOString() }).eq('id', id); if (error) throw error; });
-  const payInstallment = () => fail('Online payment is unavailable until a verified payment gateway and webhook are configured. No money was charged or marked as paid.');
+  const addBankAccount = (account: Omit<BankAccount, 'id' | 'userId' | 'isVerified' | 'proofPath' | 'rejectionReason'>, proof: File | null): AsyncAction => {
+    if (!customerUser) return fail(msg('Sign in before adding a bank account.'));
+    const accountNumber = account.accountNumber.replace(/\s/g, '');
+    const ifsc = account.ifscCode.trim().toUpperCase();
+    if (!account.accountHolder.trim() || !account.bankName.trim()) return fail(msg('Enter the account holder name and bank name.'));
+    if (!/^[0-9]{9,18}$/.test(accountNumber)) return fail(msg('Enter a valid account number (9 to 18 digits).'));
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) return fail(msg('Enter a valid 11-character IFSC code (e.g. SBIN0001234).'));
+    const problem = fileProblem(proof, msg('Cancelled cheque or passbook page'), ANY_DOCUMENT);
+    if (problem) return fail(problem);
+    return mutate(async () => {
+      const proofPath = await uploadPrivateFile(customerUser.id, proof as File);
+      const { error } = await supabase.from('customer_bank_accounts').insert({ user_id: customerUser.id,
+        account_holder_name: account.accountHolder.trim(), account_number: accountNumber, ifsc_code: ifsc,
+        bank_name: account.bankName.trim(), branch_name: account.branch.trim() || null, proof_path: proofPath,
+        is_primary: !bankAccounts.some(b => b.userId === customerUser.id) });
+      if (error) {
+        await supabase.storage.from('kyc-documents').remove([proofPath]);
+        throw error.code === '23505' ? new Error(msg('This bank account is already added.')) : error;
+      }
+    });
+  };
+  const removeBankAccount = (id: string) => mutate(async () => {
+    const proof = bankAccounts.find(b => b.id === id)?.proofPath;
+    const { error } = await supabase.from('customer_bank_accounts').delete().eq('id', id); if (error) throw error;
+    if (proof) await supabase.storage.from('kyc-documents').remove([proof]);
+  });
+  const verifyBankAccount = (id: string) => mutate(async () => { const { error } = await supabase.from('customer_bank_accounts').update({ is_verified: true, rejection_reason: null, verified_by: adminUser?.id, verified_at: new Date().toISOString() }).eq('id', id); if (error) throw error; });
+  const rejectBankAccount = (id: string, reason: string) => mutate(async () => { const { error } = await supabase.from('customer_bank_accounts').update({ is_verified: false, rejection_reason: reason, verified_by: null, verified_at: null }).eq('id', id); if (error) throw error; });
+  const addNominee = (nominee: Omit<Nominee, 'id' | 'userId'>): AsyncAction => {
+    if (!customerUser) return fail(msg('Sign in before adding a nominee.'));
+    const phone = nominee.phone.replace(/\D/g, '');
+    if (!nominee.name.trim() || !nominee.relationship.trim()) return fail(msg('Enter the nominee\'s name and relationship.'));
+    if (phone.length !== 10) return fail(msg('Enter the nominee\'s 10-digit mobile number.'));
+    return mutate(async () => {
+      const { error } = await supabase.from('nominees').insert({ user_id: customerUser.id, nominee_name: nominee.name.trim(),
+        relationship: nominee.relationship.trim(), phone_number: phone, id_proof_number: nominee.idProofNumber?.trim() || null });
+      if (error) throw error;
+    });
+  };
+  const removeNominee = (id: string) => mutate(async () => { const { error } = await supabase.from('nominees').delete().eq('id', id); if (error) throw error; });
+  const payInstallment = () => fail(msg('Online payment is unavailable until a verified payment gateway and webhook are configured. No money was charged or marked as paid.'));
   const scheduleAuction = (groupId: string, month: number, when: string) => mutate(async () => { const { error } = await supabase.from('auctions').insert({ group_id: groupId, month_number: month, auction_date: new Date(when).toISOString(), conducted_by: adminUser?.id }); if (error) throw error; });
   const placeAuctionBid = (auctionId: string, amount: number): AsyncAction => {
     const auction = auctions.find(a => a.id === auctionId);
     const sub = subscribers.find(s => s.groupId === auction?.groupId && s.userId === customerUser?.id && !s.hasWonAuction);
-    if (!sub) return fail('You need an eligible ticket in this group to bid.');
+    if (!sub) return fail(msg('You need an eligible ticket in this group to bid.'));
     return mutate(async () => { const { error } = await supabase.from('auction_bids').insert({ auction_id: auctionId, group_id: auction?.groupId, subscriber_id: sub.id, bid_discount_amount: amount }); if (error) throw error; });
   };
   const finalizeAuction = (id: string) => mutate(async () => {
@@ -405,7 +544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const checkerReleasePayout = () => fail('A checker sign-off and verified bank transfer reference are required before release. No funds were released.');
   const createSupportTicket = (subject: string, category: TicketCategory, message: string) => mutate(async () => {
-    if (!customerUser) throw new Error('Sign in before opening a support ticket.');
+    if (!customerUser) throw new Error(msg('Sign in before opening a support ticket.'));
     const { data: ticket, error } = await supabase.from('support_tickets').insert({
       ticket_code: `TKT-${Date.now().toString(36).toUpperCase()}`, user_id: customerUser.id, subject, category,
     }).select('id').single();
@@ -415,7 +554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (result.error) throw result.error;
   });
   const replySupportTicket = (id: string, message: string) => mutate(async () => {
-    const sender = adminUser ?? customerUser; if (!sender) throw new Error('Sign in to reply.');
+    const sender = adminUser ?? customerUser; if (!sender) throw new Error(msg('Sign in to reply.'));
     const { error } = await supabase.from('support_ticket_messages').insert({ ticket_id: id,
       sender_id: sender.id, sender_type: adminUser ? 'SUPPORT' : 'CUSTOMER', message }); if (error) throw error;
   });
@@ -431,7 +570,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     } catch (error) {
       tab?.close();
-      setOperationError(error instanceof Error ? error.message : 'Unable to open KYC document');
+      setOperationError(error instanceof Error ? error.message : msg('Unable to open KYC document'));
       return false;
     }
   };
@@ -439,13 +578,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return <AppContext.Provider value={{ isLoaded, operationError, customerUser, adminUser, authModalOpen,
     authModalMode, openAuthModal, closeAuthModal, customerLogin, customerSignUp,
     customerLogout: signOut, adminLogin, adminLogout: signOut, groups, subscribers, installments, payments,
-    kycList, bankAccounts, nominees, auctions, payouts, documents, notifications, ledger, tickets,
-    auditLogs, customers, createChitGroup, deleteChitGroup, joinChitGroup, submitKYC, approveKYC, rejectKYC,
+    kycList, bankAccounts, nominees, agreements, auctions, payouts, documents, notifications, ledger, tickets,
+    auditLogs, customers, createChitGroup, deleteChitGroup, joinChitGroup, staffEnrollSubscriber, approveKYC, rejectKYC,
+    addBankAccount, removeBankAccount, verifyBankAccount, rejectBankAccount, addNominee, removeNominee,
     payInstallment, scheduleAuction, placeAuctionBid, finalizeAuction, makerApprovePayout, checkerReleasePayout,
     createSupportTicket, replySupportTicket, markNotificationRead, openKYCDocument }}>
     {children}
     {operationError && <div role="alert" className="fixed bottom-4 right-4 z-[100] max-w-md rounded-xl bg-red-800 p-4 text-sm text-white shadow-xl">
-      <button aria-label="Dismiss error" onClick={() => setOperationError('')} className="float-right ml-4">×</button>{operationError}
+      <button aria-label={t('Dismiss error')} onClick={() => setOperationError('')} className="float-right ml-4">×</button>{t(operationError)}
     </div>}
   </AppContext.Provider>;
 };

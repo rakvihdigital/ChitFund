@@ -2,6 +2,10 @@
 -- Records every change to the business tables in public.audit_logs from the database itself,
 -- so entries can't be skipped or forged by the browser.
 
+-- The log must outlive the people in it. With a foreign key, deleting a user who appears in the log
+-- tries to null out actor_id, which the append-only trigger blocks, so the user could never be deleted.
+ALTER TABLE public.audit_logs DROP CONSTRAINT IF EXISTS audit_logs_actor_id_fkey;
+
 CREATE OR REPLACE FUNCTION private.write_audit_log()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE label text := TG_ARGV[0];

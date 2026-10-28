@@ -19,6 +19,16 @@ import {
   Filter
 } from 'lucide-react';
 
+// Approval needs all of these; the database refuses it otherwise
+const REQUIRED_DOCUMENTS = [
+  { type: 'PAN_CARD', label: 'PAN card' },
+  { type: 'AADHAAR_FRONT', label: 'Aadhaar front' },
+  { type: 'AADHAAR_BACK', label: 'Aadhaar back' },
+  { type: 'PHOTOGRAPH', label: 'Photograph' },
+  { type: 'BANK_PROOF', label: 'Cancelled cheque' },
+] as const;
+const documentLabel = (type: string) => REQUIRED_DOCUMENTS.find((d) => d.type === type)?.label ?? type.replaceAll('_', ' ');
+
 export default function AdminKYCPage() {
   const { kycList, approveKYC, rejectKYC, openKYCDocument, customers } = useApp();
 
@@ -148,6 +158,7 @@ export default function AdminKYCPage() {
             const applicantName = k.userName || customer?.fullName || 'Customer';
             const applicantEmail = k.userEmail || customer?.email || 'N/A';
             const applicantPhone = k.userPhone || customer?.phone || 'N/A';
+            const missingDocuments = REQUIRED_DOCUMENTS.filter((d) => !k.documents.some((doc) => doc.type === d.type));
 
             return (
               <div
@@ -266,7 +277,7 @@ export default function AdminKYCPage() {
                                 {doc.fileName}
                               </span>
                               <span className="text-[10px] text-gray-400">
-                                {doc.type.replace('_', ' ')} • {doc.uploadedAt}
+                                {documentLabel(doc.type)} • {doc.uploadedAt}
                               </span>
                             </div>
                           </div>
@@ -283,6 +294,24 @@ export default function AdminKYCPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Required document checklist */}
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  {REQUIRED_DOCUMENTS.map((d) => {
+                    const present = k.documents.some((doc) => doc.type === d.type);
+                    return (
+                      <span key={d.type} className={`px-2.5 py-1 rounded-full border font-bold ${present ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                        {present ? '✓' : '✗'} {d.label}
+                      </span>
+                    );
+                  })}
+                </div>
+                {k.status === 'PENDING_APPROVAL' && (
+                  <p className="text-[11px] text-gray-500">
+                    Before approving, check that the name matches on every document (including the cheque) and the photo matches the ID.
+                    {missingDocuments.length > 0 && <span className="text-rose-700 font-bold"> Missing documents: reject and ask the customer to register again with all documents.</span>}
+                  </p>
+                )}
 
                 {/* Verification History / Notes */}
                 {k.status === 'VERIFIED' && k.verifiedBy && (
@@ -310,7 +339,7 @@ export default function AdminKYCPage() {
                     </button>
                     <button
                       onClick={() => handleApprove(k.id)}
-                      disabled={isProcessing || k.documents.length === 0}
+                      disabled={isProcessing || missingDocuments.length > 0}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center space-x-1.5 disabled:opacity-50"
                     >
                       <CheckCircle2 className="w-4 h-4" />

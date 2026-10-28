@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/store';
+import { Wordmark } from '@/components/Wordmark';
 import { Shield, Lock, Mail, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function AdminLoginPage() {
@@ -45,26 +45,17 @@ export default function AdminLoginPage() {
   const activeError = errorMsg || operationError;
 
   return (
-    <div className="auth-page staff-auth-page"><div className="auth-intro"><span>RAKVIH · MANAGEMENT SUITE</span><h1>A clearer view.<br /><em>At every step.</em></h1><p>Your workspace for schemes, subscriber records, collections, and approvals.</p><div>One connected workspace for your team.</div></div>
+    <div className="auth-page staff-auth-page"><div className="auth-intro"><span>CHITFUND · MANAGEMENT SUITE</span><h1>A clearer view.<br /><em>At every step.</em></h1><p>Your workspace for schemes, subscriber records, collections, and approvals.</p><div>One connected workspace for your team.</div></div>
       <div className="auth-card max-w-md w-full bg-white rounded-[20px] p-8 space-y-6 shadow-lg text-gray-900 border border-gray-100">
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 mx-auto relative rounded-2xl p-1.5 flex items-center justify-center">
-            <Image
-              src="/logo-transparent.png"
-              alt="RAKVIH Solutions"
-              width={56}
-              height={56}
-              className="object-contain"
-              priority
-            />
-          </div>
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <Wordmark tagline="Management Suite" />
           <div className="inline-flex items-center space-x-1.5 bg-amber-100 text-amber-900 px-3 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider">
             <Shield className="w-3.5 h-3.5" />
             <span>Administrative Gateway</span>
           </div>
           <h2 className="text-2xl font-semibold text-gray-900">Admin Staff Login</h2>
           <p className="text-xs text-gray-500">
-            Restricted access for RAKVIH Solutions chit fund officers & managers
+            Restricted access for ChitFund officers & managers
           </p>
         </div>
 
@@ -84,7 +75,7 @@ export default function AdminLoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@rakvih.com"
+                placeholder="admin@example.com"
                 className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#123d33]"
                 required
               />

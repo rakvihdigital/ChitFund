@@ -33,6 +33,15 @@ export interface CustomerKYC {
   }[];
 }
 
+export type KycFileType = 'PAN_CARD' | 'AADHAAR_FRONT' | 'AADHAAR_BACK' | 'PHOTOGRAPH' | 'BANK_PROOF';
+
+// What a customer provides at registration
+export interface KycSubmission {
+  pan: string;
+  aadhaar: string;
+  files: Record<KycFileType, File | null>;
+}
+
 export interface BankAccount {
   id: string;
   userId: string;
@@ -42,6 +51,8 @@ export interface BankAccount {
   bankName: string;
   branch: string;
   isVerified: boolean;
+  proofPath: string;
+  rejectionReason?: string;
 }
 
 export interface Nominee {
@@ -51,6 +62,30 @@ export interface Nominee {
   relationship: string;
   phone: string;
   idProofNumber?: string;
+}
+
+// The member's signed agreement for one ticket, with the group terms as they were when signed
+export interface ChitAgreement {
+  id: string;
+  subscriberId: string;
+  groupId: string;
+  userId: string;
+  version: string;
+  signedName: string;
+  signedAt: string;
+  terms: {
+    groupCode: string;
+    groupName: string;
+    totalValue: number;
+    durationMonths: number;
+    monthlyContribution: number;
+    totalMembers: number;
+    foremanCommissionPercent: number;
+    minBidPercent: number;
+    maxBidPercent: number;
+    startDate: string;
+    seatNumber: number;
+  };
 }
 
 export interface ChitGroup {

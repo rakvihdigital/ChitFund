@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useApp } from "@/lib/store";
 import { Menu, X } from "lucide-react";
 import { CustomerAuthModal } from "@/components/CustomerAuthModal";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Wordmark } from "@/components/Wordmark";
+import { msg, useT } from "@/lib/i18n";
 
 export default function SiteLayout({
   children,
@@ -14,6 +16,7 @@ export default function SiteLayout({
   children: React.ReactNode;
 }) {
   const { customerUser, customerLogout, openAuthModal } = useApp();
+  const { t } = useT();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuDialog = useRef<HTMLDialogElement>(null);
@@ -41,69 +44,65 @@ export default function SiteLayout({
     };
   }, [menuOpen]);
   const links = [
-    ["Home", "/"],
-    ["Chit schemes", "/schemes"],
-    ["How it works", "/how-it-works"],
-    ["Savings calculator", "/calculator"],
-    ["About us", "/about"],
+    [msg("Home"), "/"],
+    [msg("Chit schemes"), "/schemes"],
+    [msg("How it works"), "/how-it-works"],
+    [msg("Savings calculator"), "/calculator"],
+    [msg("About us"), "/about"],
   ];
   return (
     <div className="premium-site">
       <CustomerAuthModal />
       <a href="#main-content" className="skip-link">
-        Skip to content
+        {t("Skip to content")}
       </a>
       <div className="announcement">
-        A little discipline today. A world of possibilities tomorrow.{" "}
-        <span>Discover a better way to save</span>
+        {t("A little discipline today. A world of possibilities tomorrow.")}{" "}
+        <span>{t("Discover a better way to save")}</span>
       </div>
       <header className="site-header">
         <div className="site-container header-inner">
-          <Link href="/" className="brand" aria-label="RAKVIH home">
-            <Image src="/logo-transparent.png" alt="RAKVIH" width={132} height={132} priority />
+          <Link href="/" className="brand" aria-label={t("ChitFund home")}>
+            <Wordmark />
           </Link>
-          <nav className="desktop-nav" aria-label="Main navigation">
+          <nav className="desktop-nav" aria-label={t("Main navigation")}>
             {links.map(([label, href]) => (
               <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined}>
-                {label}
+                {t(label)}
               </Link>
             ))}
           </nav>
           <div className="header-actions">
             {customerUser ? (
               <>
-                <Link className="admin-header-link" href="/admin/login">
-                  Admin portal
-                </Link>
+                <LanguageSwitcher />
                 <Link className="button button-small" href="/portal">
-                  My account
+                  {t("My account")}
                 </Link>
                 <button className="signin signout-link" onClick={customerLogout}>
-                  Sign out
+                  {t("Sign out")}
                 </button>
               </>
             ) : (
               <>
-                <Link className="admin-header-link" href="/admin/login">
-                  Admin portal
-                </Link>
+                <LanguageSwitcher />
                 <button
                   className="signup-header-link"
                   onClick={() => openAuthModal("signup")}
                 >
-                  Sign up
+                  {t("Sign up")}
                 </button>
                 <button
                   className="button button-small"
                   onClick={() => openAuthModal("signup")}
                 >
-                  Get started
+                  {t("Get started")}
                 </button>
               </>
             )}
             <button
               className="icon-button mobile-toggle"
-              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-label={menuOpen ? t("Close menu") : t("Open menu")}
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
               aria-haspopup="dialog"
@@ -118,7 +117,7 @@ export default function SiteLayout({
         ref={menuDialog}
         id="mobile-menu"
         className="mobile-menu-dialog"
-        aria-label="Navigation menu"
+        aria-label={t("Navigation menu")}
         onCancel={() => setMenuOpen(false)}
         onClose={() => setMenuOpen(false)}
         onClick={(event) => {
@@ -127,33 +126,31 @@ export default function SiteLayout({
       >
         <div className="mobile-menu-panel">
           <div className="mobile-menu-heading">
-            <Link href="/" aria-label="RAKVIH home" onClick={() => setMenuOpen(false)}>
-              <Image src="/logo-transparent.png" alt="RAKVIH" width={82} height={82} />
+            <Link href="/" aria-label={t("ChitFund home")} onClick={() => setMenuOpen(false)}>
+              <Wordmark />
             </Link>
-            <button className="mobile-menu-close" aria-label="Close menu" onClick={() => setMenuOpen(false)} autoFocus>
+            <button className="mobile-menu-close" aria-label={t("Close menu")} onClick={() => setMenuOpen(false)} autoFocus>
               <X size={22} />
             </button>
           </div>
-          <span className="mobile-menu-label">EXPLORE RAKVIH</span>
-          <nav className="mobile-menu-links" aria-label="Mobile navigation">
+          <span className="mobile-menu-label">{t("EXPLORE CHITFUND")}</span>
+          <nav className="mobile-menu-links" aria-label={t("Mobile navigation")}>
             {links.map(([label, href]) => (
               <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} onClick={() => setMenuOpen(false)}>
-                {label}
+                {t(label)}
               </Link>
             ))}
           </nav>
           <div className="mobile-menu-account">
+            <LanguageSwitcher className="language-switcher mobile-menu-language" />
             {customerUser ? (
-              <Link className="mobile-menu-primary" href="/portal" onClick={() => setMenuOpen(false)}>My account</Link>
+              <Link className="mobile-menu-primary" href="/portal" onClick={() => setMenuOpen(false)}>{t("My account")}</Link>
             ) : (
               <div className="mobile-menu-auth">
-                <button onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>Sign up</button>
-                <button className="mobile-menu-primary" onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>Get started</button>
+                <button onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>{t("Sign up")}</button>
+                <button className="mobile-menu-primary" onClick={() => { setMenuOpen(false); openAuthModal("signup"); }}>{t("Get started")}</button>
               </div>
             )}
-            <Link className="mobile-menu-admin" href="/admin/login" onClick={() => setMenuOpen(false)}>
-              Admin portal
-            </Link>
             {customerUser && (
               <button
                 className="mobile-menu-signout"
@@ -162,7 +159,7 @@ export default function SiteLayout({
                   customerLogout();
                 }}
               >
-                Sign out
+                {t("Sign out")}
               </button>
             )}
           </div>
@@ -174,66 +171,63 @@ export default function SiteLayout({
           <div className="footer-top">
             <div className="footer-brand-col" data-home-reveal="left">
               <div className="footer-brand-heading">
-                <Link href="/" className="footer-logo" aria-label="RAKVIH home">
-                  <Image src="/logo-transparent.png" alt="RAKVIH" width={150} height={150} />
+                <Link href="/" className="footer-logo" aria-label={t("ChitFund home")}>
+                  <Wordmark tone="light" />
                 </Link>
                 <p>
-                  Rooted in trust.
+                  {t("Rooted in trust.")}
                   <br />
-                  Built for your tomorrow.
+                  {t("Built for your tomorrow.")}
                 </p>
               </div>
               <p className="footer-company-description">
-                RAKVIH Solutions Private Limited. Next-generation digital chitty
-                management platform providing transparent, regulated savings and
-                emergency liquidity.
+                {t("ChitFund Solutions Private Limited. Next-generation digital chitty management platform providing transparent, regulated savings and emergency liquidity.")}
               </p>
-              <span className="footer-registration">Registered under Chit Funds Act, 1982</span>
+              <span className="footer-registration">{t("Registered under Chit Funds Act, 1982")}</span>
             </div>
             <div className="footer-navigation-col" data-home-reveal="up">
               <div className="footer-link-col">
-                <span className="eyebrow">EXPLORE</span>
-                <Link href="/">Home</Link>
-                <Link href="/schemes">Chit schemes</Link>
-                <Link href="/calculator">Savings calculator</Link>
-                <Link href="/how-it-works">How it works</Link>
-                <Link href="/about">About us</Link>
+                <span className="eyebrow">{t("EXPLORE")}</span>
+                <Link href="/">{t("Home")}</Link>
+                <Link href="/schemes">{t("Chit schemes")}</Link>
+                <Link href="/calculator">{t("Savings calculator")}</Link>
+                <Link href="/how-it-works">{t("How it works")}</Link>
+                <Link href="/about">{t("About us")}</Link>
               </div>
               <div className="footer-link-col">
-                <span className="eyebrow">YOUR RAKVIH</span>
-                <Link href="/portal">Member portal</Link>
-                <Link href="/login">Sign in / Register</Link>
-                <Link href="/admin/login">Staff access</Link>
+                <span className="eyebrow">{t("YOUR CHITFUND")}</span>
+                <Link href="/portal">{t("Member portal")}</Link>
+                <Link href="/login">{t("Sign in / Register")}</Link>
               </div>
             </div>
             <div className="footer-contact-col" data-home-reveal="up">
-              <span className="eyebrow">LET’S TALK</span>
+              <span className="eyebrow">{t("LET’S TALK")}</span>
               <a href="mailto:support@rakvih.com">
                 support@rakvih.com
               </a>
               <a href="tel:+918040001234">+91 80 4000 1234</a>
               <p>
-                Bangalore, Karnataka
+                {t("Bangalore, Karnataka")}
                 <br />
-                India
+                {t("India")}
               </p>
             </div>
             <div className="footer-security-col" data-home-reveal="right">
-              <span className="eyebrow">SECURITY &amp; STAFF</span>
-              <p>256-bit SSL encrypted financial transactions with Supabase Row Level Security.</p>
-              <Link href="/admin/login">Admin Management Portal</Link>
+              <span className="eyebrow">{t("SECURITY")}</span>
+              <p>{t("256-bit SSL encrypted financial transactions with Supabase Row Level Security.")}</p>
             </div>
           </div>
           <div className="footer-bottom">
-            <span className="footer-copyright">© 2026 RAKVIH Solutions Private Limited. All Rights Reserved.</span>
+            <span className="footer-copyright">{t("© 2026 ChitFund Solutions Private Limited. All Rights Reserved.")}</span>
             <div className="footer-bottom-right">
               <div className="footer-legal">
-                <span>Privacy Policy</span>
-                <span>Terms &amp; Conditions</span>
-                <span>Compliance Standards</span>
+                <span>{t("Privacy Policy")}</span>
+                <span>{t("Terms & Conditions")}</span>
+                <span>{t("Compliance Standards")}</span>
               </div>
+              {/* Developer credit: stays as RAKVIH */}
               <div className="footer-credit">
-                Designed and developed by{" "}
+                {t("Designed and developed by")}{" "}
                 <a href="https://rakvih.in" target="_blank" rel="noopener noreferrer">
                   RAKVIH
                 </a>

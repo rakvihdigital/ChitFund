@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { Info } from "lucide-react";
+import { msg, useT } from "@/lib/i18n";
 
 const currency = (value: number) =>
   `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 export function ChitCalculator() {
+  const { t } = useT();
   const [value, setValue] = useState(100000);
   const [months, setMonths] = useState(20);
   const [discount, setDiscount] = useState(20);
@@ -20,14 +22,14 @@ export function ChitCalculator() {
     <div className="savings-calculator">
       <div className="calculator-controls" data-home-reveal="left">
         <div className="calculator-title">
-          <span className="eyebrow">YOUR SAVINGS, YOUR PACE</span>
-          <h3>Chit Dividend &amp; Prize Money Estimator</h3>
-          <p>Simulate auction discount bidding, take-home prize money (&quot;Get My Amount&quot;), and monthly dividend savings</p>
-          <span className="calculator-tag">Chit Funds Act 1982 Formula</span>
+          <span className="eyebrow">{t("YOUR SAVINGS, YOUR PACE")}</span>
+          <h3>{t("Chit Dividend & Prize Money Estimator")}</h3>
+          <p>{t("Simulate auction discount bidding, take-home prize money (\"Get My Amount\"), and monthly dividend savings")}</p>
+          <span className="calculator-tag">{t("Chit Funds Act 1982 Formula")}</span>
         </div>
         <div className="calc-field">
           <div className="calc-label">
-            <label htmlFor="chit-value">Total chit value</label>
+            <label htmlFor="chit-value">{t("Total chit value")}</label>
             <output htmlFor="chit-value">{currency(value)}</output>
           </div>
           <div className="preset-row">
@@ -37,7 +39,7 @@ export function ChitCalculator() {
                 aria-pressed={value === n}
                 onClick={() => setValue(n)}
               >
-                ₹{n / 100000} lakh
+                {t("₹{amount} lakh", { amount: n / 100000 })}
               </button>
             ))}
           </div>
@@ -56,8 +58,8 @@ export function ChitCalculator() {
           </div>
         </div>
         <fieldset className="calc-field">
-          <legend>Scheme Duration &amp; Members</legend>
-          <p className="calc-hint">{months} Months ({months} Subscribers)</p>
+          <legend>{t("Scheme Duration & Members")}</legend>
+          <p className="calc-hint">{t("{count} Months ({count} Subscribers)", { count: months })}</p>
           <div className="preset-row duration-row">
             {[20, 25, 40].map((n) => (
               <button
@@ -65,22 +67,22 @@ export function ChitCalculator() {
                 aria-pressed={months === n}
                 onClick={() => setMonths(n)}
               >
-                {n} Months ({n} Seats)
+                {t("{count} Months ({count} Seats)", { count: n })}
               </button>
             ))}
           </div>
         </fieldset>
         <div className="calc-field">
           <div className="calc-label">
-            <label htmlFor="auction-discount">Auction Bid Discount You Forego</label>
-            <output htmlFor="auction-discount">{currency(auctionDiscountAmount)} · {discount}% of Chit Value</output>
+            <label htmlFor="auction-discount">{t("Auction Bid Discount You Forego")}</label>
+            <output htmlFor="auction-discount">{t("{amount} · {percent}% of Chit Value", { amount: currency(auctionDiscountAmount), percent: discount })}</output>
           </div>
           <p className="calc-hint">
-            The discount bid you offer in auction to take the prize money early.
+            {t("The discount bid you offer in auction to take the prize money early.")}
           </p>
           <div className="preset-row discount-row">
-            {[[5, "5% (Min)"], [15, "15% (Low)"], [20, "20% (Avg)"], [30, "30% (Max)"]] .map(([n, label]) => (
-              <button key={n} aria-pressed={discount === n} onClick={() => setDiscount(Number(n))}>{label}</button>
+            {([[5, msg("5% (Min)")], [15, msg("15% (Low)")], [20, msg("20% (Avg)")], [30, msg("30% (Max)")]] as const).map(([n, label]) => (
+              <button key={n} aria-pressed={discount === n} onClick={() => setDiscount(n)}>{t(label)}</button>
             ))}
           </div>
           <input
@@ -93,57 +95,55 @@ export function ChitCalculator() {
             onChange={(e) => setDiscount(Number(e.target.value))}
           />
           <div className="range-captions">
-            <span>5% (Statutory Minimum Bid)</span>
-            <span>30% (Statutory Cap)</span>
+            <span>{t("5% (Statutory Minimum Bid)")}</span>
+            <span>{t("30% (Statutory Cap)")}</span>
           </div>
         </div>
       </div>
       <div className="calculator-result" data-home-reveal="right" aria-live="polite" aria-atomic="true">
         <div className="result-heading">
-          <span>YOUR NET PRIZE MONEY (&quot;GET MY AMOUNT&quot;)</span>
+          <span>{t("YOUR NET PRIZE MONEY (\"GET MY AMOUNT\")")}</span>
         </div>
         <div className="payout-value">
           {currency(value * (1 - discount / 100))}
         </div>
-        <p>Chit Value ({currency(value)}) minus Bid Discount ({currency(auctionDiscountAmount)}).</p>
+        <p>{t("Chit Value ({value}) minus Bid Discount ({discount}).", { value: currency(value), discount: currency(auctionDiscountAmount) })}</p>
         <div className="result-divider" />
         <dl>
           <div>
-            <dt>Dividend Generated For Members</dt>
-            <dd>{currency(dividendPool)} Pool</dd>
+            <dt>{t("Dividend Generated For Members")}</dt>
+            <dd>{t("{amount} Pool", { amount: currency(dividendPool) })}</dd>
           </div>
           <div>
-            <dt>Gross Monthly Dues</dt>
+            <dt>{t("Gross Monthly Dues")}</dt>
             <dd>{currency(monthly)}</dd>
           </div>
           <div>
-            <dt>Monthly Dividend Discount</dt>
-            <dd className="dividend">− {currency(dividend)} / member</dd>
+            <dt>{t("Monthly Dividend Discount")}</dt>
+            <dd className="dividend">{t("− {amount} / member", { amount: currency(dividend) })}</dd>
           </div>
           <div className="net-result">
-            <dt>Net Dues Each Member Pays</dt>
+            <dt>{t("Net Dues Each Member Pays")}</dt>
             <dd>{currency(monthly - dividend)}</dd>
           </div>
           <div>
-            <dt>Foreman Commission (5% fixed)</dt>
+            <dt>{t("Foreman Commission (5% fixed)")}</dt>
             <dd>{currency(fee)}</dd>
           </div>
           <div>
-            <dt>Total Members Sharing Dividend</dt>
-            <dd>{months} Subscribers</dd>
+            <dt>{t("Total Members Sharing Dividend")}</dt>
+            <dd>{t("{count} Subscribers", { count: months })}</dd>
           </div>
         </dl>
         <div className="calculator-disclaimer">
           <Info size={16} />
           <p>
-            Illustration only. Assumes a 5% foreman fee and {months} members.
-            Actual payouts and dividends depend on auction results and scheme
-            terms.
+            {t("Illustration only. Assumes a 5% foreman fee and {count} members. Actual payouts and dividends depend on auction results and scheme terms.", { count: months })}
           </p>
         </div>
         <div className="calculator-law-note">
-          <span>* Governed under Central Chit Funds Act 1982</span>
-          <span>RAKVIH Solutions Pvt Ltd</span>
+          <span>{t("* Governed under Central Chit Funds Act 1982")}</span>
+          <span>{t("ChitFund Solutions Pvt Ltd")}</span>
         </div>
       </div>
     </div>

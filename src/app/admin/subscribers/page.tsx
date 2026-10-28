@@ -5,7 +5,7 @@ import { useApp } from '@/lib/store';
 import { Users, UserPlus } from 'lucide-react';
 
 export default function AdminSubscribersPage() {
-  const { subscribers, groups, customers, joinChitGroup } = useApp();
+  const { subscribers, groups, customers, kycList, staffEnrollSubscriber } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '');
@@ -15,7 +15,7 @@ export default function AdminSubscribersPage() {
     e.preventDefault();
     const groupId = selectedGroupId || groups[0]?.id;
     if (!groupId || !selectedCustomerId) return;
-    if (await joinChitGroup(groupId, selectedCustomerId)) setShowAddModal(false);
+    if (await staffEnrollSubscriber(groupId, selectedCustomerId)) setShowAddModal(false);
   };
 
   return (
@@ -120,7 +120,9 @@ export default function AdminSubscribersPage() {
                 <label className="font-bold text-gray-700 block mb-1">Registered Customer</label>
                 <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className="w-full border border-gray-300 rounded-xl p-3 outline-none" required>
                   <option value="">Select a customer</option>
-                  {customers.map(customer => <option key={customer.id} value={customer.id}>{customer.fullName} ({customer.email})</option>)}
+                  {/* Only KYC-approved customers can be enrolled */}
+                  {customers.filter(customer => kycList.some(k => k.userId === customer.id && k.status === 'VERIFIED'))
+                    .map(customer => <option key={customer.id} value={customer.id}>{customer.fullName} ({customer.email})</option>)}
                 </select>
               </div>
 

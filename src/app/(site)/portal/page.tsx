@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/lib/store';
-import { ChitGroup, ChitSubscriber } from '@/lib/types';
+import { ChitAgreement, ChitGroup, ChitSubscriber } from '@/lib/types';
+import { AgreementViewer, JoinGroupDialog } from '@/components/ChitAgreement';
+import { NomineeForm } from '@/components/NomineeForm';
+import { msg, Trans, useT } from '@/lib/i18n';
 import {
   UserCheck,
   Award,
@@ -14,7 +17,6 @@ import {
   ShieldCheck,
   ShieldAlert,
   FileText,
-  UploadCloud,
   AlertCircle,
   CreditCard,
   Building2,
@@ -39,11 +41,26 @@ interface EnrolledChitGroupItem {
   tickets: ChitSubscriber[];
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
+const KYC_STATUS_LABELS: Record<string, string> = {
+  NOT_SUBMITTED: msg('Not submitted'),
+  PENDING_APPROVAL: msg('Pending approval'),
+  VERIFIED: msg('Verified'),
+  REJECTED: msg('Rejected'),
+};
+const DOCUMENT_LABELS: Record<string, string> = {
+  PAN_CARD: msg('PAN card'),
+  AADHAAR_FRONT: msg('Aadhaar front'),
+  AADHAAR_BACK: msg('Aadhaar back'),
+  PHOTOGRAPH: msg('Photograph'),
+  BANK_PROOF: msg('Cancelled cheque'),
+  SIGNATURE: msg('Signature'),
+};
+const TICKET_STATUS_LABELS: Record<string, string> = {
+  OPEN: msg('Open'),
+  IN_PROGRESS: msg('In progress'),
+  RESOLVED: msg('Resolved'),
+  CLOSED: msg('Closed'),
+};
 
 export default function CustomerPortalPage() {
   const {
@@ -56,15 +73,18 @@ export default function CustomerPortalPage() {
     kycList,
     bankAccounts,
     nominees,
+    agreements,
     documents,
     tickets,
-    submitKYC,
     placeAuctionBid,
     createSupportTicket,
-    joinChitGroup,
+    addBankAccount,
+    removeBankAccount,
+    removeNominee,
     openKYCDocument,
     customerLogout
   } = useApp();
+  const { t } = useT();
 
   // Real customer data
   const mySubs = customerUser ? subscribers.filter((s) => s.userId === customerUser.id) : [];
@@ -73,9 +93,11 @@ export default function CustomerPortalPage() {
   const dueInstallments = myInstallments.filter((i) => i.status === 'DUE' || i.status === 'OVERDUE');
   const myPayments = customerUser ? payments.filter((p) => p.userId === customerUser.id) : [];
   const myDocs = customerUser ? documents.filter((d) => d.userId === customerUser.id) : [];
-  const myTickets = customerUser ? tickets.filter((t) => t.userId === customerUser.id) : [];
+  const myTickets = customerUser ? tickets.filter((ticket) => ticket.userId === customerUser.id) : [];
   const myBankAccounts = customerUser ? bankAccounts.filter((b) => b.userId === customerUser.id) : [];
   const myNominees = customerUser ? nominees.filter((n) => n.userId === customerUser.id) : [];
+  const myAgreements = customerUser ? agreements.filter((a) => a.userId === customerUser.id) : [];
+  const hasVerifiedBank = myBankAccounts.some((b) => b.isVerified);
 
   // Group subscriptions by chit group
   const enrolledGroups = useMemo<EnrolledChitGroupItem[]>(() => {
@@ -101,18 +123,14 @@ export default function CustomerPortalPage() {
 
   const [selectedInstalmentToPay, setSelectedInstalmentToPay] = useState<string | null>(null);
 
-  // KYC Form State
-  const [panInput, setPanInput] = useState<string>('');
-  const [aadhaarInput, setAadhaarInput] = useState<string>('');
-  const [panFile, setPanFile] = useState<File | null>(null);
-  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
-  const [isPanDragging, setIsPanDragging] = useState(false);
-  const [isAadhaarDragging, setIsAadhaarDragging] = useState(false);
-  const [isSubmittingKYC, setIsSubmittingKYC] = useState(false);
-  const [kycFeedback, setKycFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  // Joining a group and viewing signed agreements
+  const [joiningGroup, setJoiningGroup] = useState<ChitGroup | null>(null);
+  const [viewingAgreement, setViewingAgreement] = useState<ChitAgreement | null>(null);
 
-  const panFileInputRef = useRef<HTMLInputElement>(null);
-  const aadhaarFileInputRef = useRef<HTMLInputElement>(null);
+  // Bank Account Form State
+  const [bankForm, setBankForm] = useState({ accountHolder: '', accountNumber: '', ifscCode: '', bankName: '', branch: '' });
+  const [bankProof, setBankProof] = useState<File | null>(null);
+  const [isSavingBank, setIsSavingBank] = useState(false);
 
   // Auction State
   const [bidDiscountInput, setBidDiscountInput] = useState<number>(15000);
@@ -131,9 +149,9 @@ export default function CustomerPortalPage() {
             <UserCheck className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Member Portal Access</h2>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{t("Member Portal Access")}</h2>
             <p className="text-xs text-gray-500 leading-relaxed max-w-sm mx-auto">
-              Please sign in to your verified customer account to access your enrolled chit schemes, monthly contribution schedules, and e-auction rooms.
+              {t("Please sign in to your verified customer account to access your enrolled chit schemes, monthly contribution schedules, and e-auction rooms.")}
             </p>
           </div>
           <Link
@@ -141,71 +159,24 @@ export default function CustomerPortalPage() {
             className="w-full bg-[#123d33] hover:bg-[#0c2922] text-white font-bold text-xs py-3.5 px-6 rounded-xl shadow-md shadow-emerald-900/10 transition-all flex items-center justify-center space-x-2 group"
           >
             <LogIn className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-            <span>Sign In to Member Portal</span>
+            <span>{t("Sign In to Member Portal")}</span>
           </Link>
           <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-400">
-            Regulated under the Government Chit Funds Act, 1982
+            {t("Regulated under the Government Chit Funds Act, 1982")}
           </div>
         </div>
       </div>
     );
   }
 
-  // Handle KYC Submit
-  const handleKYCSubmit = async (e: React.FormEvent) => {
+  const handleBankSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setKycFeedback(null);
-
-    const pan = (panInput || myKYC?.panNumber || '').trim().toUpperCase();
-    const aadhaarDigits = (aadhaarInput || '').replace(/\D/g, '');
-
-    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
-      setKycFeedback({
-        type: 'error',
-        message: 'Please enter a valid 10-character alphanumeric PAN number (e.g. ABCDE1234F).'
-      });
-      return;
-    }
-
-    if (aadhaarDigits.length !== 12) {
-      setKycFeedback({
-        type: 'error',
-        message: 'Please enter a valid 12-digit Aadhaar card number.'
-      });
-      return;
-    }
-
-    if (!panFile || !aadhaarFile) {
-      setKycFeedback({
-        type: 'error',
-        message: 'Please select both your PAN card and Aadhaar card document files.'
-      });
-      return;
-    }
-
-    setIsSubmittingKYC(true);
-    try {
-      const success = await submitKYC(pan, aadhaarDigits, [panFile, aadhaarFile]);
-      if (success) {
-        setKycFeedback({
-          type: 'success',
-          message: 'Documents uploaded successfully! Your KYC verification is now under officer review.'
-        });
-        setPanFile(null);
-        setAadhaarFile(null);
-      } else {
-        setKycFeedback({
-          type: 'error',
-          message: 'Submission could not be completed. Please ensure files are valid PDF, JPG, or PNG under 10MB.'
-        });
-      }
-    } catch (err: unknown) {
-      setKycFeedback({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'KYC upload failed. Please try again.'
-      });
-    } finally {
-      setIsSubmittingKYC(false);
+    setIsSavingBank(true);
+    const ok = await addBankAccount(bankForm, bankProof);
+    setIsSavingBank(false);
+    if (ok) {
+      setBankForm({ accountHolder: '', accountNumber: '', ifscCode: '', bankName: '', branch: '' });
+      setBankProof(null);
     }
   };
 
@@ -266,10 +237,10 @@ export default function CustomerPortalPage() {
                     )}
                     <span>
                       {myKYC?.status === 'VERIFIED'
-                        ? 'KYC Verified'
+                        ? t('KYC Verified')
                         : myKYC?.status === 'PENDING_APPROVAL'
-                        ? 'KYC Pending'
-                        : 'KYC Action Required'}
+                        ? t('KYC Pending')
+                        : t('KYC Action Required')}
                     </span>
                   </span>
                 </div>
@@ -294,7 +265,7 @@ export default function CustomerPortalPage() {
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
               <div className="bg-gray-50/90 px-4 py-2.5 rounded-2xl border border-gray-200/80 flex-1 sm:flex-initial">
                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">
-                  Enrolled Schemes
+                  {t("Enrolled Schemes")}
                 </span>
                 <span className="text-sm font-bold text-gray-900">
                   {enrolledGroups.length} Schemes ({mySubs.length} Tickets)
@@ -313,7 +284,7 @@ export default function CustomerPortalPage() {
                     totalDueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'
                   }`}
                 >
-                  Pending Dues
+                  {t("Pending Dues")}
                 </span>
                 <span
                   className={`text-sm font-bold ${
@@ -327,10 +298,10 @@ export default function CustomerPortalPage() {
               <button
                 onClick={customerLogout}
                 className="inline-flex items-center space-x-1.5 text-xs font-semibold text-gray-600 hover:text-rose-700 px-3.5 py-2.5 rounded-2xl border border-gray-200 hover:border-rose-200 hover:bg-rose-50/50 transition-all cursor-pointer"
-                title="Sign out of customer account"
+                title={t("Sign out of customer account")}
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
+                <span>{t("Sign Out")}</span>
               </button>
             </div>
           </div>
@@ -339,24 +310,24 @@ export default function CustomerPortalPage() {
         {/* 2. TABBED NAVIGATION BAR */}
         <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none bg-white p-1.5 rounded-2xl border border-gray-200/80 shadow-xs">
           {[
-            { id: 'overview', label: 'Executive Overview', icon: LayoutDashboard },
-            { id: 'chits', label: `My Schemes (${enrolledGroups.length})`, icon: Layers },
+            { id: 'overview', label: t('Executive Overview'), icon: LayoutDashboard },
+            { id: 'chits', label: t('My Schemes ({count})', { count: enrolledGroups.length }), icon: Layers },
             {
               id: 'kyc',
-              label: 'KYC & Verification',
+              label: t('KYC & Verification'),
               icon: ShieldCheck,
               alertBadge: myKYC?.status !== 'VERIFIED'
             },
             {
               id: 'payments',
-              label: `Contribution Dues (${dueInstallments.length})`,
+              label: t('Contribution Dues ({count})', { count: dueInstallments.length }),
               icon: CreditCard,
               badge: dueInstallments.length > 0 ? dueInstallments.length : undefined
             },
-            { id: 'auctions', label: 'e-Auctions & Draws', icon: Award },
-            { id: 'bank', label: 'Bank & Nominee', icon: Building2 },
-            { id: 'documents', label: 'Receipts & Docs', icon: FileText },
-            { id: 'support', label: 'Support Helpdesk', icon: HelpCircle }
+            { id: 'auctions', label: t('e-Auctions & Draws'), icon: Award },
+            { id: 'bank', label: t('Bank & Nominee'), icon: Building2 },
+            { id: 'documents', label: t('Receipts & Docs'), icon: FileText },
+            { id: 'support', label: t('Support Helpdesk'), icon: HelpCircle }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -395,49 +366,49 @@ export default function CustomerPortalPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-xs space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
-                  Total Chit Portfolio
+                  {t("Total Chit Portfolio")}
                 </span>
                 <span className="text-2xl font-bold text-gray-900 block">
                   ₹{totalChitValue.toLocaleString('en-IN')}
                 </span>
                 <span className="text-[11px] text-emerald-700 font-semibold block">
-                  Across {enrolledGroups.length} registered scheme{enrolledGroups.length === 1 ? '' : 's'}
+                  {t(enrolledGroups.length === 1 ? msg('Across {count} registered scheme') : msg('Across {count} registered schemes'), { count: enrolledGroups.length })}
                 </span>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-xs space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
-                  Active Tickets / Seats
+                  {t("Active Tickets / Seats")}
                 </span>
                 <span className="text-2xl font-bold text-gray-900 block">
-                  {mySubs.length} Seats
+                  {t('{count} Seats', { count: mySubs.length })}
                 </span>
                 <span className="text-[11px] text-gray-500 font-medium block">
-                  Max 3 tickets allowed per scheme
+                  {t("Max 3 tickets allowed per scheme")}
                 </span>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-xs space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
-                  Monthly Commitment
+                  {t("Monthly Commitment")}
                 </span>
                 <span className="text-2xl font-bold text-[#123d33] block">
                   ₹{totalCommittedMonthly.toLocaleString('en-IN')}
                 </span>
                 <span className="text-[11px] text-gray-500 font-medium block">
-                  Reduced by monthly dividend payouts
+                  {t("Reduced by monthly dividend payouts")}
                 </span>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-xs space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
-                  Total Payments Made
+                  {t("Total Payments Made")}
                 </span>
                 <span className="text-2xl font-bold text-emerald-700 block">
                   ₹{myPayments.reduce((sum, p) => sum + p.amountPaid, 0).toLocaleString('en-IN')}
                 </span>
                 <span className="text-[11px] text-gray-500 font-medium block">
-                  {myPayments.length} recorded receipt{myPayments.length === 1 ? '' : 's'}
+                  {t(myPayments.length === 1 ? msg('{count} recorded receipt') : msg('{count} recorded receipts'), { count: myPayments.length })}
                 </span>
               </div>
             </div>
@@ -452,7 +423,7 @@ export default function CustomerPortalPage() {
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="bg-amber-400/20 text-amber-200 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border border-amber-300/30">
-                          Upcoming Contribution Due
+                          {t("Upcoming Contribution Due")}
                         </span>
                         <h3 className="text-2xl font-bold mt-2.5 tracking-tight">
                           {dueInstallments[0].groupCode}
@@ -466,7 +437,7 @@ export default function CustomerPortalPage() {
                     <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 border border-white/15">
                       <div>
                         <p className="text-xs text-emerald-100 font-medium">
-                          Month #{dueInstallments[0].monthNumber} • Due Date:{' '}
+                          {t('Month #{month} • Due Date:', { month: dueInstallments[0].monthNumber })}{' '}
                           <span className="font-bold text-white">{dueInstallments[0].dueDate}</span>
                         </p>
                         <p className="text-3xl font-extrabold tracking-tight mt-1">
@@ -477,7 +448,7 @@ export default function CustomerPortalPage() {
                         onClick={() => setSelectedInstalmentToPay(dueInstallments[0].id)}
                         className="bg-white hover:bg-gray-50 text-[#123d33] font-bold text-xs py-3 px-5 rounded-xl shadow-md transition-all self-start sm:self-auto cursor-pointer"
                       >
-                        Payment Setup Notice
+                        {t("Payment Setup Notice")}
                       </button>
                     </div>
                   </div>
@@ -487,9 +458,9 @@ export default function CustomerPortalPage() {
                       <CheckCircle2 className="w-6 h-6 text-emerald-700" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm">All Monthly Contributions Are Up To Date</h4>
+                      <h4 className="font-bold text-sm">{t("All Monthly Contributions Are Up To Date")}</h4>
                       <p className="text-xs text-emerald-700 mt-0.5">
-                        No outstanding dues. You are fully eligible for this month’s e-auctions.
+                        {t("No outstanding dues. You are fully eligible for this month’s e-auctions.")}
                       </p>
                     </div>
                   </div>
@@ -498,12 +469,12 @@ export default function CustomerPortalPage() {
                 {/* Enrolled Schemes List */}
                 <div className="bg-white p-6 rounded-[22px] border border-gray-200/90 shadow-xs space-y-4">
                   <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                    <h3 className="font-bold text-base text-gray-900">Your Enrolled Schemes</h3>
+                    <h3 className="font-bold text-base text-gray-900">{t("Your Enrolled Schemes")}</h3>
                     <Link
                       href="/schemes"
                       className="text-xs text-[#123d33] font-bold hover:underline flex items-center space-x-1"
                     >
-                      <span>Explore Schemes</span>
+                      <span>{t("Explore Schemes")}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
@@ -514,13 +485,13 @@ export default function CustomerPortalPage() {
                         <Layers className="w-6 h-6" />
                       </div>
                       <p className="text-xs text-gray-500">
-                        You have not enrolled in any chit scheme yet.
+                        {t("You have not enrolled in any chit scheme yet.")}
                       </p>
                       <Link
                         href="/schemes"
                         className="inline-block bg-[#123d33] hover:bg-[#0c2922] text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs transition-all"
                       >
-                        Browse Registered Schemes
+                        {t("Browse Registered Schemes")}
                       </Link>
                     </div>
                   ) : (
@@ -541,20 +512,23 @@ export default function CustomerPortalPage() {
                                   {grp.groupCode}
                                 </span>
                                 <span className="text-[10px] bg-[#123d33] text-white font-bold px-2 py-0.5 rounded-md">
-                                  {tickets.length} {tickets.length === 1 ? 'Ticket' : 'Tickets'}
+                                  {t(tickets.length === 1 ? msg('{count} Ticket') : msg('{count} Tickets'), { count: tickets.length })}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500">
-                                Total ₹{grp.totalValue.toLocaleString('en-IN')} • Duration:{' '}
-                                {grp.durationMonths} Months • Seats: {tickets.map((t) => `#${t.seatNumber}`).join(', ')}
+                                {t('Total {value} • Duration: {months} Months • Seats: {seats}', {
+                                  value: `₹${grp.totalValue.toLocaleString('en-IN')}`,
+                                  months: grp.durationMonths,
+                                  seats: tickets.map((ticket) => `#${ticket.seatNumber}`).join(', '),
+                                })}
                               </p>
                             </div>
                             <div className="text-left sm:text-right">
                               <span className="font-extrabold text-[#123d33] text-sm block">
-                                ₹{combinedMonthly.toLocaleString('en-IN')}/mo
+                                {t('{amount}/mo', { amount: `₹${combinedMonthly.toLocaleString('en-IN')}` })}
                               </span>
                               <span className="text-[10px] text-gray-400">
-                                Month {grp.currentMonth} of {grp.durationMonths}
+                                {t('Month {month} of {total}', { month: grp.currentMonth, total: grp.durationMonths })}
                               </span>
                             </div>
                           </div>
@@ -571,21 +545,21 @@ export default function CustomerPortalPage() {
                 <div className="bg-white p-6 rounded-[22px] border border-gray-200/90 shadow-xs space-y-4">
                   <div className="flex items-center space-x-2">
                     <ShieldCheck className="w-5 h-5 text-[#123d33]" />
-                    <h3 className="font-bold text-sm text-gray-900">Government KYC Compliance</h3>
+                    <h3 className="font-bold text-sm text-gray-900">{t("Government KYC Compliance")}</h3>
                   </div>
 
                   {myKYC?.status === 'VERIFIED' ? (
                     <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
                       <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Identity Verification Active</span>
+                        <span>{t("Identity Verification Active")}</span>
                       </div>
                       <p className="text-[11px] text-emerald-700 leading-relaxed">
-                        Your PAN and Aadhaar identity documents have been approved by the compliance officer. You have full access to bid in e-auctions and request prize payouts.
+                        {t("Your PAN and Aadhaar identity documents have been approved by the compliance officer. You have full access to bid in e-auctions and request prize payouts.")}
                       </p>
                       {myKYC.verifiedAt && (
                         <p className="text-[10px] text-emerald-600 font-medium pt-1 border-t border-emerald-200/60">
-                          Verified on {myKYC.verifiedAt.slice(0, 10)}
+                          {t('Verified on {date}', { date: myKYC.verifiedAt.slice(0, 10) })}
                         </p>
                       )}
                     </div>
@@ -593,32 +567,32 @@ export default function CustomerPortalPage() {
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
                       <div className="flex items-center space-x-2 text-amber-800 font-bold text-xs">
                         <Clock className="w-4 h-4 text-amber-600" />
-                        <span>Verification in Review</span>
+                        <span>{t("Verification in Review")}</span>
                       </div>
                       <p className="text-[11px] text-amber-700 leading-relaxed">
-                        Your identity documents were submitted and are currently undergoing officer verification. You will be notified once approved.
+                        {t("Your identity documents were submitted and are currently undergoing officer verification. You will be notified once approved.")}
                       </p>
                       <button
                         onClick={() => setActiveTab('kyc')}
                         className="text-xs text-amber-900 font-bold underline cursor-pointer"
                       >
-                        View uploaded files →
+                        {t("View uploaded files →")}
                       </button>
                     </div>
                   ) : (
                     <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl space-y-3">
                       <div className="flex items-center space-x-2 text-gray-800 font-bold text-xs">
                         <AlertCircle className="w-4 h-4 text-amber-600" />
-                        <span>Action Required: Submit KYC</span>
+                        <span>{t("Action Required: Submit KYC")}</span>
                       </div>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
-                        Mandated under the Chit Funds Act, 1982 before taking part in e-auctions or prize payouts.
+                        {t("Mandated under the Chit Funds Act, 1982 before taking part in e-auctions or prize payouts.")}
                       </p>
                       <button
                         onClick={() => setActiveTab('kyc')}
                         className="w-full bg-[#123d33] hover:bg-[#0c2922] text-white font-bold py-2.5 rounded-xl text-xs shadow-xs transition-all cursor-pointer"
                       >
-                        Upload KYC Documents Now
+                        {t("Upload KYC Documents Now")}
                       </button>
                     </div>
                   )}
@@ -627,18 +601,18 @@ export default function CustomerPortalPage() {
                 {/* Recent Receipts Mini Widget */}
                 <div className="bg-white p-6 rounded-[22px] border border-gray-200/90 shadow-xs space-y-3">
                   <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
-                    <h3 className="font-bold text-sm text-gray-900">Recent Receipts</h3>
+                    <h3 className="font-bold text-sm text-gray-900">{t("Recent Receipts")}</h3>
                     <button
                       onClick={() => setActiveTab('documents')}
                       className="text-[11px] text-[#123d33] font-bold hover:underline cursor-pointer"
                     >
-                      View All
+                      {t("View All")}
                     </button>
                   </div>
 
                   {myPayments.length === 0 ? (
                     <p className="text-xs text-gray-400 py-3 text-center">
-                      No contribution payments recorded yet.
+                      {t("No contribution payments recorded yet.")}
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -672,17 +646,17 @@ export default function CustomerPortalPage() {
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-                  My Enrolled Schemes
+                  {t("My Enrolled Schemes")}
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Holding {mySubs.length} total tickets across {enrolledGroups.length} chit schemes
+                  {t('Holding {tickets} total tickets across {schemes} chit schemes', { tickets: mySubs.length, schemes: enrolledGroups.length })}
                 </p>
               </div>
               <Link
                 href="/schemes"
                 className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs transition-all self-start sm:self-auto flex items-center space-x-1.5"
               >
-                <span>+ Join Another Scheme</span>
+                <span>{t("+ Join Another Scheme")}</span>
               </Link>
             </div>
 
@@ -692,16 +666,16 @@ export default function CustomerPortalPage() {
                   <Layers className="w-7 h-7" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-bold text-base text-gray-900">No Enrolled Schemes Found</h3>
+                  <h3 className="font-bold text-base text-gray-900">{t("No Enrolled Schemes Found")}</h3>
                   <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                    You have not enrolled in any chit scheme tickets yet. Explore active schemes to start saving with regular monthly dividends.
+                    {t("You have not enrolled in any chit scheme tickets yet. Explore active schemes to start saving with regular monthly dividends.")}
                   </p>
                 </div>
                 <Link
                   href="/schemes"
                   className="inline-block bg-[#123d33] hover:bg-[#0c2922] text-white font-bold text-xs px-6 py-3 rounded-xl shadow-md transition-all"
                 >
-                  Browse Available Schemes
+                  {t("Browse Available Schemes")}
                 </Link>
               </div>
             ) : (
@@ -724,7 +698,7 @@ export default function CustomerPortalPage() {
                               {grp.groupCode}
                             </span>
                             <span className="text-[10px] text-gray-400 font-medium">
-                              Chit Funds Act, 1982
+                              {t("Chit Funds Act, 1982")}
                             </span>
                           </div>
                           <h3 className="font-bold text-xl text-gray-900 tracking-tight">
@@ -733,7 +707,7 @@ export default function CustomerPortalPage() {
                         </div>
                         <span className="inline-flex items-center space-x-1.5 bg-[#123d33] text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs">
                           <Ticket className="w-3.5 h-3.5 text-amber-300" />
-                          <span>{tickets.length} {tickets.length === 1 ? 'Ticket' : 'Tickets'}</span>
+                          <span>{t(tickets.length === 1 ? msg('{count} Ticket') : msg('{count} Tickets'), { count: tickets.length })}</span>
                         </span>
                       </div>
 
@@ -741,26 +715,26 @@ export default function CustomerPortalPage() {
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div className="bg-gray-50/80 p-4 rounded-2xl border border-gray-100 space-y-1">
                           <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block">
-                            Total Scheme Value
+                            {t("Total Scheme Value")}
                           </span>
                           <span className="font-bold text-gray-900 text-base">
                             ₹{grp.totalValue.toLocaleString('en-IN')}
                           </span>
                           <span className="text-[10px] text-gray-500 block">
-                            {grp.totalMembers} Members Circle
+                            {t('{count} Members Circle', { count: grp.totalMembers })}
                           </span>
                         </div>
                         <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/80 space-y-1">
                           <span className="text-emerald-700 text-[10px] font-bold uppercase tracking-wider block">
-                            Combined Monthly Dues
+                            {t("Combined Monthly Dues")}
                           </span>
                           <span className="font-bold text-[#123d33] text-base">
                             ₹{combinedMonthly.toLocaleString('en-IN')}
                           </span>
                           <span className="text-[10px] text-emerald-800 block">
                             {tickets.length > 1
-                              ? `₹${grp.monthlyContribution.toLocaleString('en-IN')} × ${tickets.length} tickets`
-                              : `₹${grp.monthlyContribution.toLocaleString('en-IN')} per month`}
+                              ? t('{amount} × {count} tickets', { amount: `₹${grp.monthlyContribution.toLocaleString('en-IN')}`, count: tickets.length })
+                              : t('{amount} per month', { amount: `₹${grp.monthlyContribution.toLocaleString('en-IN')}` })}
                           </span>
                         </div>
                       </div>
@@ -769,34 +743,34 @@ export default function CustomerPortalPage() {
                       <div className="bg-gray-50/80 rounded-2xl p-4 border border-gray-100 space-y-2.5">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-gray-800">
-                            Tickets Held ({tickets.length})
+                            {t('Tickets Held ({count})', { count: tickets.length })}
                           </span>
                           <span className="text-[11px] text-gray-500 font-medium">
-                            Quota: {tickets.length} of {maxAllowed} Max
+                            {t('Quota: {count} of {max} Max', { count: tickets.length, max: maxAllowed })}
                           </span>
                         </div>
                         <div className="space-y-2">
-                          {tickets.map((t, idx) => (
+                          {tickets.map((ticket, idx) => (
                             <div
-                              key={t.id}
+                              key={ticket.id}
                               className="bg-white p-3 rounded-xl border border-gray-200/80 flex justify-between items-center text-xs shadow-2xs"
                             >
                               <div className="flex items-center space-x-2.5">
                                 <span className="bg-[#123d33] text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                  TICKET #{idx + 1}
+                                  {t('TICKET #{number}', { number: idx + 1 })}
                                 </span>
                                 <span className="font-bold text-gray-900 text-xs">
-                                  Seat #{t.seatNumber}
+                                  {t('Seat #{number}', { number: ticket.seatNumber })}
                                 </span>
                               </div>
                               <span
                                 className={`text-[10px] font-bold px-2.5 py-1 rounded-md ${
-                                  t.hasWonAuction
+                                  ticket.hasWonAuction
                                     ? 'bg-amber-100 text-amber-900'
                                     : 'bg-emerald-100 text-emerald-900'
                                 }`}
                               >
-                                {t.hasWonAuction ? `🏆 Won Month ${t.wonMonth}` : '✓ Eligible to Bid'}
+                                {ticket.hasWonAuction ? t('🏆 Won Month {month}', { month: ticket.wonMonth ?? '' }) : t('✓ Eligible to Bid')}
                               </span>
                             </div>
                           ))}
@@ -806,9 +780,9 @@ export default function CustomerPortalPage() {
                       {/* Progress Bar */}
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-xs font-semibold text-gray-700">
-                          <span>Scheme Progress</span>
+                          <span>{t("Scheme Progress")}</span>
                           <span>
-                            Month {grp.currentMonth} of {grp.durationMonths}
+                            {t('Month {month} of {total}', { month: grp.currentMonth, total: grp.durationMonths })}
                           </span>
                         </div>
                         <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
@@ -822,20 +796,15 @@ export default function CustomerPortalPage() {
                       {/* Footer: Take More Tickets */}
                       <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                         <span className="text-gray-500 text-[11px]">
-                          Hold up to <strong>{maxAllowed}</strong> tickets in this circle
+                          <Trans text="Hold up to {count} tickets in this circle" values={{ count: <strong>{maxAllowed}</strong> }} />
                         </span>
                         {canTakeMore ? (
                           <button
-                            onClick={async () => {
-                              const success = await joinChitGroup(grp.id);
-                              if (success) {
-                                alert(`Enrolled for Ticket #${tickets.length + 1} in ${grp.groupName}!`);
-                              }
-                            }}
+                            onClick={() => setJoiningGroup(grp)}
                             className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold px-4 py-2 rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center space-x-1.5"
                           >
                             <Ticket className="w-3.5 h-3.5" />
-                            <span>+ Take Ticket #{tickets.length + 1}</span>
+                            <span>{t('+ Take Ticket #{number}', { number: tickets.length + 1 })}</span>
                           </button>
                         ) : (
                           <span className="bg-gray-100 text-gray-600 font-bold px-3 py-1.5 rounded-lg text-[11px] text-center">
@@ -888,17 +857,17 @@ export default function CustomerPortalPage() {
                   <div>
                     <h2 className="text-xl font-bold tracking-tight">
                       {myKYC?.status === 'VERIFIED'
-                        ? 'KYC Verification Approved'
+                        ? t('KYC Verification Approved')
                         : myKYC?.status === 'PENDING_APPROVAL'
-                        ? 'KYC Verification Under Review'
-                        : 'Government KYC Verification Required'}
+                        ? t('KYC Verification Under Review')
+                        : t('Government KYC Verification Required')}
                     </h2>
                     <p className="text-xs text-gray-600 mt-0.5">
                       {myKYC?.status === 'VERIFIED'
-                        ? 'Your identity documents are compliant with the Government Chit Funds Act, 1982.'
+                        ? t('Your identity documents are compliant with the Government Chit Funds Act, 1982.')
                         : myKYC?.status === 'PENDING_APPROVAL'
-                        ? 'Submitted documents are being reviewed by the compliance officer.'
-                        : 'Upload your government-issued PAN and Aadhaar documents to unlock full auction bidding.'}
+                        ? t('Submitted documents are being reviewed by the compliance officer.')
+                        : t('Upload your government-issued PAN and Aadhaar documents to unlock full auction bidding.')}
                     </p>
                   </div>
                 </div>
@@ -912,7 +881,7 @@ export default function CustomerPortalPage() {
                       : 'bg-gray-100 text-gray-700 border-gray-200'
                   }`}
                 >
-                  Status: {myKYC?.status || 'NOT SUBMITTED'}
+                  {t('Status: {status}', { status: t(KYC_STATUS_LABELS[myKYC?.status ?? 'NOT_SUBMITTED']) })}
                 </span>
               </div>
             </div>
@@ -922,263 +891,26 @@ export default function CustomerPortalPage() {
               <div className="border-b border-gray-100 pb-4">
                 <h3 className="text-lg font-bold text-gray-900 tracking-tight">
                   {myKYC?.status === 'VERIFIED'
-                    ? 'Identity Details on Record'
-                    : 'Submit Identity Details & Documents'}
+                    ? t('Identity Details on Record')
+                    : t('Submit Identity Details & Documents')}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Securely stored in encrypted storage and verified strictly for statutory compliance.
+                  {t("Securely stored in encrypted storage and verified strictly for statutory compliance.")}
                 </p>
               </div>
 
-              {kycFeedback && (
-                <div
-                  className={`p-4 rounded-2xl text-xs flex items-center space-x-3 border ${
-                    kycFeedback.type === 'success'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      : 'bg-rose-50 border-rose-200 text-rose-900'
-                  }`}
-                >
-                  {kycFeedback.type === 'success' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
-                  )}
-                  <span>{kycFeedback.message}</span>
+              {/* Identity numbers on record (KYC is approved before a customer can sign in) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-0.5">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">{t("PAN Card Number")}</span>
+                  <span className="font-mono font-bold text-gray-900 text-sm tracking-wider">{myKYC?.panNumber || t('Not provided')}</span>
                 </div>
-              )}
-
-              <form onSubmit={handleKYCSubmit} className="space-y-6 text-xs">
-                {/* 1. Identification Numbers Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-gray-700 block text-xs">
-                      PAN Card Number <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <CreditCard className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
-                      <input
-                        type="text"
-                        value={panInput || myKYC?.panNumber || ''}
-                        onChange={(e) => setPanInput(e.target.value.toUpperCase())}
-                        placeholder="e.g. ABCDE1234F"
-                        maxLength={10}
-                        className="w-full pl-10 pr-3.5 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#123d33] uppercase font-mono tracking-wider font-semibold text-xs"
-                        required
-                        disabled={myKYC?.status === 'VERIFIED'}
-                      />
-                    </div>
-                    <span className="text-[10px] text-gray-400">
-                      Standard 10-character alphanumeric Indian PAN
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-gray-700 block text-xs">
-                      Aadhaar Card Number <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <ShieldCheck className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
-                      <input
-                        type="text"
-                        value={aadhaarInput || (myKYC?.aadhaarNumber ? myKYC.aadhaarNumber : '')}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/\D/g, '').slice(0, 12);
-                          setAadhaarInput(raw);
-                        }}
-                        placeholder="12-digit Aadhaar Number"
-                        maxLength={12}
-                        className="w-full pl-10 pr-3.5 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-[#123d33] font-mono tracking-wider font-semibold text-xs"
-                        required
-                        disabled={myKYC?.status === 'VERIFIED'}
-                      />
-                    </div>
-                    <span className="text-[10px] text-gray-400">
-                      Only the last 4 digits are permanently stored for your privacy
-                    </span>
-                  </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-0.5">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">{t("Aadhaar Number")}</span>
+                  <span className="font-mono font-bold text-gray-900 text-sm tracking-wider">{myKYC?.aadhaarNumber || t('Not provided')}</span>
+                  <span className="text-[10px] text-gray-400 block">{t("Only the last 4 digits are stored for your privacy")}</span>
                 </div>
-
-                {/* 2. MODERN DRAG-AND-DROP FILE UPLOADER CARDS */}
-                {myKYC?.status !== 'VERIFIED' && (
-                  <div className="space-y-3 pt-2">
-                    <label className="font-bold text-gray-800 block text-xs">
-                      Upload Document Proofs (PDF, JPG, PNG up to 10MB each)
-                    </label>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* PAN Card Dropzone */}
-                      <div
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setIsPanDragging(true);
-                        }}
-                        onDragLeave={() => setIsPanDragging(false)}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsPanDragging(false);
-                          if (e.dataTransfer.files?.[0]) setPanFile(e.dataTransfer.files[0]);
-                        }}
-                        onClick={() => panFileInputRef.current?.click()}
-                        className={`p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3 ${
-                          isPanDragging
-                            ? 'border-[#123d33] bg-emerald-50/60'
-                            : panFile
-                            ? 'border-emerald-300 bg-emerald-50/30'
-                            : 'border-gray-300 hover:border-[#123d33] hover:bg-gray-50/60 bg-gray-50/40'
-                        }`}
-                      >
-                        <input
-                          ref={panFileInputRef}
-                          type="file"
-                          accept="application/pdf,image/jpeg,image/png"
-                          className="hidden"
-                          onChange={(e) => setPanFile(e.target.files?.[0] || null)}
-                        />
-
-                        {panFile ? (
-                          <div className="space-y-2 w-full">
-                            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto">
-                              <CheckCircle2 className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <p className="font-bold text-gray-900 text-xs truncate max-w-[200px] mx-auto">
-                                {panFile.name}
-                              </p>
-                              <p className="text-[10px] text-gray-400">
-                                {formatFileSize(panFile.size)} • Ready for upload
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPanFile(null);
-                              }}
-                              className="inline-flex items-center space-x-1 text-[11px] text-rose-600 hover:underline pt-1"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Remove & choose another</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-800 flex items-center justify-center">
-                              <UploadCloud className="w-6 h-6" />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-bold text-gray-800 text-xs">PAN Card Document</p>
-                              <p className="text-[11px] text-gray-500">
-                                Drag & drop or <span className="text-[#123d33] font-bold">browse</span>
-                              </p>
-                            </div>
-                            <span className="text-[10px] text-gray-400 bg-white px-2.5 py-0.5 rounded-full border border-gray-200">
-                              PDF, JPG, PNG • Max 10MB
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Aadhaar Card Dropzone */}
-                      <div
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setIsAadhaarDragging(true);
-                        }}
-                        onDragLeave={() => setIsAadhaarDragging(false)}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsAadhaarDragging(false);
-                          if (e.dataTransfer.files?.[0]) setAadhaarFile(e.dataTransfer.files[0]);
-                        }}
-                        onClick={() => aadhaarFileInputRef.current?.click()}
-                        className={`p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3 ${
-                          isAadhaarDragging
-                            ? 'border-[#123d33] bg-emerald-50/60'
-                            : aadhaarFile
-                            ? 'border-emerald-300 bg-emerald-50/30'
-                            : 'border-gray-300 hover:border-[#123d33] hover:bg-gray-50/60 bg-gray-50/40'
-                        }`}
-                      >
-                        <input
-                          ref={aadhaarFileInputRef}
-                          type="file"
-                          accept="application/pdf,image/jpeg,image/png"
-                          className="hidden"
-                          onChange={(e) => setAadhaarFile(e.target.files?.[0] || null)}
-                        />
-
-                        {aadhaarFile ? (
-                          <div className="space-y-2 w-full">
-                            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto">
-                              <CheckCircle2 className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <p className="font-bold text-gray-900 text-xs truncate max-w-[200px] mx-auto">
-                                {aadhaarFile.name}
-                              </p>
-                              <p className="text-[10px] text-gray-400">
-                                {formatFileSize(aadhaarFile.size)} • Ready for upload
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAadhaarFile(null);
-                              }}
-                              className="inline-flex items-center space-x-1 text-[11px] text-rose-600 hover:underline pt-1"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Remove & choose another</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                              <UploadCloud className="w-6 h-6" />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="font-bold text-gray-800 text-xs">Aadhaar Card Document</p>
-                              <p className="text-[11px] text-gray-500">
-                                Drag & drop or <span className="text-[#123d33] font-bold">browse</span>
-                              </p>
-                            </div>
-                            <span className="text-[10px] text-gray-400 bg-white px-2.5 py-0.5 rounded-full border border-gray-200">
-                              PDF, JPG, PNG • Max 10MB
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Submit Action Button */}
-                {myKYC?.status !== 'VERIFIED' && (
-                  <div className="pt-2 flex items-center justify-between">
-                    <p className="text-[11px] text-gray-400">
-                      Officer approval typically completes within 2 to 4 business hours.
-                    </p>
-                    <button
-                      type="submit"
-                      disabled={isSubmittingKYC}
-                      className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold py-3.5 px-8 rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center space-x-2 disabled:opacity-50"
-                    >
-                      {isSubmittingKYC ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Uploading & Submitting...</span>
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck className="w-4 h-4 text-amber-300" />
-                          <span>Submit KYC for Officer Review</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </form>
+              </div>
 
               {/* 3. LIST OF DOCUMENTS CURRENTLY ON RECORD IN SUPABASE */}
               {myKYC && myKYC.documents && myKYC.documents.length > 0 && (
@@ -1197,7 +929,7 @@ export default function CustomerPortalPage() {
                           <div className="truncate">
                             <p className="font-bold text-gray-900 truncate">{doc.fileName}</p>
                             <span className="text-[10px] text-gray-400">
-                              {doc.type} • Uploaded {doc.uploadedAt}
+                              {t('{type} • Uploaded {date}', { type: t(DOCUMENT_LABELS[doc.type] ?? doc.type), date: doc.uploadedAt })}
                             </span>
                           </div>
                         </div>
@@ -1207,7 +939,7 @@ export default function CustomerPortalPage() {
                           className="inline-flex items-center space-x-1 text-xs font-semibold text-[#123d33] hover:underline flex-shrink-0 pl-2 cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>View</span>
+                          <span>{t("View")}</span>
                         </button>
                       </div>
                     ))}
@@ -1226,10 +958,10 @@ export default function CustomerPortalPage() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-                  Monthly Contribution Dues
+                  {t("Monthly Contribution Dues")}
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Track due dates, applied dividend discounts, and payment receipts
+                  {t("Track due dates, applied dividend discounts, and payment receipts")}
                 </p>
               </div>
             </div>
@@ -1241,19 +973,19 @@ export default function CustomerPortalPage() {
               </div>
               <div className="space-y-0.5">
                 <p className="font-bold text-sm text-emerald-950">
-                  How Dividend Discounts Lower Your Payable Dues
+                  {t("How Dividend Discounts Lower Your Payable Dues")}
                 </p>
                 <p className="text-xs text-emerald-800 leading-relaxed">
-                  Whenever an e-auction closes, the winning bid discount (minus the statutory 5% foreman commission) is divided equally amongst all non-prized members as a <strong>Dividend Credit</strong>. This is automatically deducted from your gross instalment!
+                  <Trans text="Whenever an e-auction closes, the winning bid discount (minus the statutory 5% foreman commission) is divided equally amongst all non-prized members as a {credit}. This is automatically deducted from your gross instalment!" values={{ credit: <strong>{t("Dividend Credit")}</strong> }} />
                 </p>
               </div>
             </div>
 
             {myInstallments.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-[24px] border border-gray-200/90 text-gray-500 shadow-sm">
-                <p className="text-sm font-semibold text-gray-700">No Monthly Dues Found</p>
+                <p className="text-sm font-semibold text-gray-700">{t("No Monthly Dues Found")}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Enroll in a chit group to generate your monthly instalment schedule.
+                  {t("Enroll in a chit group to generate your monthly instalment schedule.")}
                 </p>
               </div>
             ) : (
@@ -1262,21 +994,21 @@ export default function CustomerPortalPage() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-gray-50/80 text-gray-700 font-bold border-b border-gray-100">
                       <tr>
-                        <th className="p-4">Scheme Code</th>
-                        <th className="p-4">Month #</th>
-                        <th className="p-4">Due Date</th>
-                        <th className="p-4">Gross Dues</th>
-                        <th className="p-4 text-emerald-700">Dividend Discount</th>
-                        <th className="p-4">Net Payable</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4">Action</th>
+                        <th className="p-4">{t("Scheme Code")}</th>
+                        <th className="p-4">{t("Month #")}</th>
+                        <th className="p-4">{t("Due Date")}</th>
+                        <th className="p-4">{t("Gross Dues")}</th>
+                        <th className="p-4 text-emerald-700">{t("Dividend Discount")}</th>
+                        <th className="p-4">{t("Net Payable")}</th>
+                        <th className="p-4">{t("Status")}</th>
+                        <th className="p-4">{t("Action")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-medium">
                       {myInstallments.map((inst) => (
                         <tr key={inst.id} className="hover:bg-gray-50/70 transition-colors">
                           <td className="p-4 font-bold text-gray-900">{inst.groupCode}</td>
-                          <td className="p-4 text-gray-600">Month #{inst.monthNumber}</td>
+                          <td className="p-4 text-gray-600">{t('Month #{month}', { month: inst.monthNumber })}</td>
                           <td className="p-4 text-gray-600">{inst.dueDate}</td>
                           <td className="p-4 text-gray-600">
                             ₹{inst.grossAmount.toLocaleString('en-IN')}
@@ -1304,11 +1036,11 @@ export default function CustomerPortalPage() {
                                 onClick={() => setSelectedInstalmentToPay(inst.id)}
                                 className="bg-[#123d33] hover:bg-[#0c2922] text-white px-3.5 py-1.5 rounded-xl font-bold text-[11px] shadow-xs cursor-pointer"
                               >
-                                Pay Dues
+                                {t("Pay Dues")}
                               </button>
                             ) : (
                               <span className="text-gray-400 text-[11px]">
-                                Paid on {inst.paidDate}
+                                {t('Paid on {date}', { date: inst.paidDate ?? '' })}
                               </span>
                             )}
                           </td>
@@ -1331,10 +1063,10 @@ export default function CustomerPortalPage() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center space-x-2">
                   <Award className="w-6 h-6 text-amber-500" />
-                  <span>e-Auction Live Bidding Room</span>
+                  <span>{t("e-Auction Live Bidding Room")}</span>
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Real-time transparent reverse auctions for enrolled scheme members
+                  {t("Real-time transparent reverse auctions for enrolled scheme members")}
                 </p>
               </div>
             </div>
@@ -1342,9 +1074,9 @@ export default function CustomerPortalPage() {
             {auctions.length === 0 ? (
               <div className="p-12 text-center text-gray-500 space-y-2">
                 <Calendar className="w-10 h-10 text-gray-300 mx-auto" />
-                <p className="text-sm font-semibold text-gray-700">No Active Auctions Scheduled</p>
+                <p className="text-sm font-semibold text-gray-700">{t("No Active Auctions Scheduled")}</p>
                 <p className="text-xs text-gray-400">
-                  Monthly auctions will appear here according to your scheme’s statutory schedule.
+                  {t("Monthly auctions will appear here according to your scheme’s statutory schedule.")}
                 </p>
               </div>
             ) : (
@@ -1352,7 +1084,7 @@ export default function CustomerPortalPage() {
                 {/* Bidding Form */}
                 <div className="bg-gray-50/80 p-6 rounded-2xl border border-gray-200/80 space-y-5">
                   <div className="space-y-1">
-                    <h3 className="font-bold text-base text-gray-900">Place Your Discount Bid</h3>
+                    <h3 className="font-bold text-base text-gray-900">{t("Place Your Discount Bid")}</h3>
                     <p className="text-xs text-gray-500">
                       Scheme: {auctions[0].groupName} (Month #{auctions[0].monthNumber})
                     </p>
@@ -1360,7 +1092,7 @@ export default function CustomerPortalPage() {
 
                   <div>
                     <label className="text-xs font-bold text-gray-700 block mb-2">
-                      Your Selected Bid Discount: ₹{bidDiscountInput.toLocaleString('en-IN')}
+                      {t('Your Selected Bid Discount: {amount}', { amount: `₹${bidDiscountInput.toLocaleString('en-IN')}` })}
                     </label>
                     <input
                       type="range"
@@ -1372,8 +1104,8 @@ export default function CustomerPortalPage() {
                       className="w-full accent-amber-500 cursor-pointer"
                     />
                     <div className="flex justify-between text-[10px] text-gray-400 font-bold mt-1">
-                      <span>₹5,000 (Min 5% Foreman)</span>
-                      <span>₹30,000 (Max 30% Statutory Cap)</span>
+                      <span>{t("₹5,000 (Min 5% Foreman)")}</span>
+                      <span>{t("₹30,000 (Max 30% Statutory Cap)")}</span>
                     </div>
                   </div>
 
@@ -1393,7 +1125,7 @@ export default function CustomerPortalPage() {
                       <div className="p-4 bg-white rounded-xl border border-emerald-200 shadow-xs space-y-3">
                         <div className="flex justify-between items-center">
                           <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
-                            Take-Home Prize (&quot;Get My Amount&quot;)
+                            {t("Take-Home Prize (\"Get My Amount\")")}
                           </span>
                           <span className="text-xl font-extrabold text-emerald-700">
                             ₹{myPrizeMoney.toLocaleString('en-IN')}
@@ -1402,7 +1134,7 @@ export default function CustomerPortalPage() {
                         <div className="grid grid-cols-2 gap-2 text-[10px] pt-2 border-t border-gray-100">
                           <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-900">
                             <span className="text-emerald-700 block font-semibold">
-                              Dividend Distributed / Member:
+                              {t("Dividend Distributed / Member:")}
                             </span>
                             <span className="font-extrabold text-xs">
                               ₹{divPerMember.toLocaleString('en-IN')}
@@ -1410,7 +1142,7 @@ export default function CustomerPortalPage() {
                           </div>
                           <div className="bg-amber-50 p-2.5 rounded-lg text-amber-900">
                             <span className="text-amber-700 block font-semibold">
-                              Foreman Commission (5%):
+                              {t("Foreman Commission (5%):")}
                             </span>
                             <span className="font-extrabold text-xs">
                               ₹{fee.toLocaleString('en-IN')}
@@ -1425,16 +1157,16 @@ export default function CustomerPortalPage() {
                     onClick={() => placeAuctionBid(auctions[0].id, bidDiscountInput)}
                     className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl shadow-md transition-all cursor-pointer"
                   >
-                    Confirm & Place Auction Bid
+                    {t("Confirm & Place Auction Bid")}
                   </button>
                 </div>
 
                 {/* Live Bids Feed */}
                 <div className="space-y-4">
-                  <h3 className="font-bold text-base text-gray-900">Active Bids in Room</h3>
+                  <h3 className="font-bold text-base text-gray-900">{t("Active Bids in Room")}</h3>
                   {auctions[0].bids.length === 0 ? (
                     <p className="text-xs text-gray-400 py-6 text-center border rounded-2xl border-dashed">
-                      No bids submitted yet for this auction round.
+                      {t("No bids submitted yet for this auction round.")}
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -1474,18 +1206,21 @@ export default function CustomerPortalPage() {
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-gray-900">Registered Bank Account</h3>
-                  <p className="text-xs text-gray-500">Used for prize payouts and direct settlements</p>
+                  <h3 className="font-bold text-base text-gray-900">{t("Registered Bank Account")}</h3>
+                  <p className="text-xs text-gray-500">{t("Used for prize payouts and direct settlements")}</p>
                 </div>
               </div>
 
-              {myBankAccounts.length === 0 ? (
-                <div className="p-6 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
-                  <p className="text-xs text-gray-500">
-                    No bank account linked yet. Contact officer or update details during KYC.
-                  </p>
+              {!hasVerifiedBank && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                  <span>
+                    {t("Prize money is paid only to a verified bank account in your name. Add your account with a cancelled cheque or passbook page so an officer can verify it before any payout.")}
+                  </span>
                 </div>
-              ) : (
+              )}
+
+              {myBankAccounts.length > 0 && (
                 <div className="space-y-3">
                   {myBankAccounts.map((b) => (
                     <div
@@ -1498,35 +1233,98 @@ export default function CustomerPortalPage() {
                           className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                             b.isVerified
                               ? 'bg-emerald-100 text-emerald-800'
+                              : b.rejectionReason
+                              ? 'bg-rose-100 text-rose-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}
                         >
-                          {b.isVerified ? '✓ Verified' : 'Pending Verification'}
+                          {b.isVerified ? t('✓ Verified') : b.rejectionReason ? t('Rejected') : t('Pending Verification')}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-gray-600 pt-1">
                         <div>
-                          <span className="text-[10px] text-gray-400 block">Account Holder</span>
+                          <span className="text-[10px] text-gray-400 block">{t("Account Holder")}</span>
                           <span className="font-semibold text-gray-800">{b.accountHolder}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-gray-400 block">Account Number</span>
+                          <span className="text-[10px] text-gray-400 block">{t("Account Number")}</span>
                           <span className="font-mono font-semibold text-gray-800">
                             •••• •••• {b.accountNumber.slice(-4)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-gray-400 block">IFSC Code</span>
+                          <span className="text-[10px] text-gray-400 block">{t("IFSC Code")}</span>
                           <span className="font-mono font-semibold text-gray-800">{b.ifscCode}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-gray-400 block">Branch</span>
-                          <span className="font-semibold text-gray-800">{b.branch}</span>
+                          <span className="text-[10px] text-gray-400 block">{t("Branch")}</span>
+                          <span className="font-semibold text-gray-800">{b.branch || '—'}</span>
                         </div>
+                      </div>
+                      {b.rejectionReason && (
+                        <p className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-800">
+                          <strong>{t("Reason:")}</strong> {b.rejectionReason}. {t("Remove this account and add it again with a clearer proof.")}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-3 pt-1">
+                        {b.proofPath && (
+                          <button type="button" onClick={() => void openKYCDocument(b.proofPath)} className="inline-flex items-center space-x-1 text-[11px] font-bold text-[#123d33] hover:underline cursor-pointer">
+                            <Eye className="w-3.5 h-3.5" /><span>{t("View proof")}</span>
+                          </button>
+                        )}
+                        {!b.isVerified && (
+                          <button type="button" onClick={() => void removeBankAccount(b.id)} className="inline-flex items-center space-x-1 text-[11px] font-bold text-rose-600 hover:underline cursor-pointer">
+                            <Trash2 className="w-3.5 h-3.5" /><span>{t("Remove")}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* A new account can be added unless one is verified or still being reviewed */}
+              {!myBankAccounts.some((b) => b.isVerified || !b.rejectionReason) && (
+                <form onSubmit={handleBankSubmit} className="space-y-3 text-xs pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {([
+                      ['accountHolder', t('Account Holder Name (as per bank)'), customerUser.fullName, true],
+                      ['accountNumber', t('Account Number'), '000123456789', true],
+                      ['ifscCode', t('IFSC Code'), 'SBIN0001234', true],
+                      ['bankName', t('Bank Name'), t('State Bank of India'), true],
+                      ['branch', t('Branch (optional)'), t('Anna Nagar'), false],
+                    ] as const).map(([field, label, placeholder, required]) => (
+                      <div key={field}>
+                        <label htmlFor={`bank-${field}`} className="block text-[11px] font-bold text-gray-700 mb-1">{label}</label>
+                        <input
+                          id={`bank-${field}`}
+                          value={bankForm[field]}
+                          onChange={(e) => setBankForm({ ...bankForm, [field]: field === 'ifscCode' ? e.target.value.toUpperCase() : e.target.value })}
+                          inputMode={field === 'accountNumber' ? 'numeric' : undefined}
+                          maxLength={field === 'ifscCode' ? 11 : field === 'accountNumber' ? 18 : undefined}
+                          placeholder={placeholder}
+                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#123d33] focus:ring-1 focus:ring-[#123d33] text-gray-900 font-medium"
+                          required={required}
+                        />
+                      </div>
+                    ))}
+                    <div>
+                      <label htmlFor="bank-proof" className="block text-[11px] font-bold text-gray-700 mb-1">{t("Cancelled Cheque / Passbook Page")}</label>
+                      <input
+                        id="bank-proof"
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png"
+                        onChange={(e) => setBankProof(e.target.files?.[0] ?? null)}
+                        className="w-full text-[11px] text-gray-600 border border-gray-300 rounded-lg bg-white file:mr-2 file:py-2 file:px-3 file:border-0 file:border-r file:border-gray-300 file:bg-gray-50 file:text-[11px] file:font-bold file:text-gray-700 cursor-pointer"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400">The account holder name must match your KYC name ({customerUser.fullName}). PDF, JPG or PNG, max 10 MB.</p>
+                  <button type="submit" disabled={isSavingBank} className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-60">
+                    {isSavingBank ? t('Uploading...') : t('Submit for Verification')}
+                  </button>
+                </form>
               )}
             </div>
 
@@ -1537,17 +1335,13 @@ export default function CustomerPortalPage() {
                   <User className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-gray-900">Registered Nominee</h3>
-                  <p className="text-xs text-gray-500">Statutory nominee under Chit Funds Act</p>
+                  <h3 className="font-bold text-base text-gray-900">{t("Registered Nominee")}</h3>
+                  <p className="text-xs text-gray-500">{t("Statutory nominee under Chit Funds Act — required before joining a scheme")}</p>
                 </div>
               </div>
 
               {myNominees.length === 0 ? (
-                <div className="p-6 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
-                  <p className="text-xs text-gray-500">
-                    No nominee registered yet. You can add a nominee by contacting support.
-                  </p>
-                </div>
+                <NomineeForm />
               ) : (
                 <div className="space-y-3">
                   {myNominees.map((n) => (
@@ -1563,18 +1357,22 @@ export default function CustomerPortalPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-gray-600 pt-1">
                         <div>
-                          <span className="text-[10px] text-gray-400 block">Contact Phone</span>
+                          <span className="text-[10px] text-gray-400 block">{t("Contact Phone")}</span>
                           <span className="font-semibold text-gray-800">{n.phone}</span>
                         </div>
                         {n.idProofNumber && (
                           <div>
-                            <span className="text-[10px] text-gray-400 block">ID Proof Number</span>
+                            <span className="text-[10px] text-gray-400 block">{t("ID Proof Number")}</span>
                             <span className="font-mono font-semibold text-gray-800">
                               {n.idProofNumber}
                             </span>
                           </div>
                         )}
                       </div>
+                      {/* Replacing a nominee: remove the old one and add the new one */}
+                      <button type="button" onClick={() => void removeNominee(n.id)} className="inline-flex items-center space-x-1 text-[11px] font-bold text-rose-600 hover:underline cursor-pointer pt-1">
+                        <Trash2 className="w-3.5 h-3.5" /><span>{t("Remove & change nominee")}</span>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1590,19 +1388,47 @@ export default function CustomerPortalPage() {
           <div className="bg-white rounded-[24px] p-6 sm:p-8 border border-gray-200/90 shadow-sm space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Digital Receipts & Official Documents
+                {t("Digital Receipts & Official Documents")}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Download verified payment receipts, chit agreements, and statements
+                {t("Download verified payment receipts, chit agreements, and statements")}
               </p>
             </div>
 
+            {myAgreements.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-bold text-sm text-gray-900">{t("Signed Chit Agreements")}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {myAgreements.map((agreement) => (
+                    <div
+                      key={agreement.id}
+                      className="p-4 bg-gray-50/80 rounded-2xl border border-gray-200/80 flex items-center justify-between text-xs"
+                    >
+                      <div className="space-y-0.5 truncate pr-3">
+                        <h4 className="font-bold text-gray-900 text-sm truncate">{agreement.terms.groupName} — {t('Seat #{number}', { number: agreement.terms.seatNumber })}</h4>
+                        <p className="text-gray-400 text-[11px]">
+                          {t('Signed {date} • Ref {ref}', { date: agreement.signedAt, ref: agreement.id.slice(0, 8).toUpperCase() })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setViewingAgreement(agreement)}
+                        className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 flex-shrink-0 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{t("View")}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {myDocs.length === 0 ? (
-              <div className="p-12 text-center text-gray-500 space-y-2 border-2 border-dashed rounded-2xl">
+              myAgreements.length === 0 && <div className="p-12 text-center text-gray-500 space-y-2 border-2 border-dashed rounded-2xl">
                 <FileText className="w-8 h-8 text-gray-300 mx-auto" />
-                <p className="text-sm font-semibold text-gray-700">No Documents Generated Yet</p>
+                <p className="text-sm font-semibold text-gray-700">{t("No Documents Generated Yet")}</p>
                 <p className="text-xs text-gray-400">
-                  Payment receipts and agreements will appear here as you transact.
+                  {t("Payment receipts and agreements will appear here as you transact.")}
                 </p>
               </div>
             ) : (
@@ -1615,7 +1441,7 @@ export default function CustomerPortalPage() {
                     <div className="space-y-0.5 truncate pr-3">
                       <h4 className="font-bold text-gray-900 text-sm truncate">{doc.title}</h4>
                       <p className="text-gray-400 text-[11px]">
-                        Ref: {doc.referenceNumber || 'N/A'} • {doc.generatedAt}
+                        {t('Ref: {ref} • {date}', { ref: doc.referenceNumber || t('N/A'), date: doc.generatedAt })}
                       </p>
                     </div>
                     <button
@@ -1623,7 +1449,7 @@ export default function CustomerPortalPage() {
                       className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 flex-shrink-0 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Download</span>
+                      <span>{t("Download")}</span>
                     </button>
                   </div>
                 ))}
@@ -1639,43 +1465,43 @@ export default function CustomerPortalPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-[24px] p-6 sm:p-7 border border-gray-200/90 shadow-sm space-y-4">
               <h3 className="font-bold text-lg text-gray-900 tracking-tight">
-                Raise Customer Support Ticket
+                {t("Raise Customer Support Ticket")}
               </h3>
               <form onSubmit={handleSupportSubmit} className="space-y-3.5 text-xs">
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1">Subject</label>
+                  <label className="font-bold text-gray-700 block mb-1">{t("Subject")}</label>
                   <input
                     type="text"
                     value={ticketSubject}
                     onChange={(e) => setTicketSubject(e.target.value)}
-                    placeholder="Summarize your issue..."
+                    placeholder={t("Summarize your issue...")}
                     className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-[#123d33]"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1">Category</label>
+                  <label className="font-bold text-gray-700 block mb-1">{t("Category")}</label>
                   <select
                     value={ticketCategory}
                     onChange={(e) => setTicketCategory(e.target.value as typeof ticketCategory)}
                     className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-[#123d33] bg-white cursor-pointer"
                   >
-                    <option value="PAYMENT">Payment & Contribution Dues</option>
-                    <option value="AUCTION">e-Auction & Dividend Inquiry</option>
-                    <option value="KYC">KYC Document Verification</option>
-                    <option value="PAYOUT">Prize Disbursement & Guarantors</option>
-                    <option value="OTHER">General Inquiries</option>
+                    <option value="PAYMENT">{t("Payment & Contribution Dues")}</option>
+                    <option value="AUCTION">{t("e-Auction & Dividend Inquiry")}</option>
+                    <option value="KYC">{t("KYC Document Verification")}</option>
+                    <option value="PAYOUT">{t("Prize Disbursement & Guarantors")}</option>
+                    <option value="OTHER">{t("General Inquiries")}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1">Description</label>
+                  <label className="font-bold text-gray-700 block mb-1">{t("Description")}</label>
                   <textarea
                     rows={4}
                     value={ticketMessage}
                     onChange={(e) => setTicketMessage(e.target.value)}
-                    placeholder="Provide details about your query..."
+                    placeholder={t("Provide details about your query...")}
                     className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-[#123d33]"
                     required
                   />
@@ -1685,7 +1511,7 @@ export default function CustomerPortalPage() {
                   type="submit"
                   className="bg-[#123d33] hover:bg-[#0c2922] text-white font-bold py-3 px-6 rounded-xl text-xs shadow-md transition-all cursor-pointer"
                 >
-                  Submit Support Ticket
+                  {t("Submit Support Ticket")}
                 </button>
               </form>
             </div>
@@ -1696,25 +1522,25 @@ export default function CustomerPortalPage() {
               </h3>
               {myTickets.length === 0 ? (
                 <div className="bg-white p-8 text-center rounded-[24px] border border-gray-200/90 text-gray-400 space-y-1">
-                  <p className="text-xs">No active or past support tickets found.</p>
+                  <p className="text-xs">{t("No active or past support tickets found.")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {myTickets.map((t) => (
+                  {myTickets.map((ticket) => (
                     <div
-                      key={t.id}
+                      key={ticket.id}
                       className="bg-white p-5 rounded-2xl border border-gray-200/90 text-xs space-y-3 shadow-2xs"
                     >
                       <div className="flex justify-between items-center font-bold">
                         <span className="text-gray-900 font-bold">
-                          {t.ticketCode} • {t.subject}
+                          {ticket.ticketCode} • {ticket.subject}
                         </span>
                         <span className="bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full text-[10px]">
-                          {t.status}
+                          {t(TICKET_STATUS_LABELS[ticket.status] ?? ticket.status)}
                         </span>
                       </div>
                       <div className="space-y-2 pt-2 border-t border-gray-100">
-                        {t.messages.map((m, idx) => (
+                        {ticket.messages.map((m, idx) => (
                           <div
                             key={idx}
                             className={`p-3 rounded-xl ${
@@ -1724,7 +1550,7 @@ export default function CustomerPortalPage() {
                             }`}
                           >
                             <span className="font-bold text-[11px] block text-gray-900">
-                              {m.senderName} ({m.sender}):
+                              {m.senderName} ({t(m.sender === 'CUSTOMER' ? msg('You') : msg('Support'))}):
                             </span>
                             <p className="mt-0.5 leading-relaxed">{m.text}</p>
                           </div>
@@ -1744,8 +1570,8 @@ export default function CustomerPortalPage() {
             <div className="bg-white rounded-[24px] p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl animate-in fade-in duration-200">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
-                  <h3 className="font-bold text-xl text-gray-900">Payment Gateway Gateway</h3>
-                  <p className="text-xs text-gray-500">Official contribution settlement</p>
+                  <h3 className="font-bold text-xl text-gray-900">{t("Payment Gateway")}</h3>
+                  <p className="text-xs text-gray-500">{t("Official contribution settlement")}</p>
                 </div>
                 <button
                   onClick={() => setSelectedInstalmentToPay(null)}
@@ -1758,10 +1584,10 @@ export default function CustomerPortalPage() {
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2 text-xs text-amber-900">
                 <p className="font-bold flex items-center space-x-1.5">
                   <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0" />
-                  <span>Online Payment Integration Notice</span>
+                  <span>{t("Online Payment Integration Notice")}</span>
                 </p>
                 <p className="leading-relaxed">
-                  In compliance with RBI regulations and the Chit Funds Act 1982, payment gateway settlement takes place via official UPI or NetBanking bank transfer. No funds were debited.
+                  {t("In compliance with RBI regulations and the Chit Funds Act 1982, payment gateway settlement takes place via official UPI or NetBanking bank transfer. No funds were debited.")}
                 </p>
               </div>
 
@@ -1769,10 +1595,21 @@ export default function CustomerPortalPage() {
                 onClick={() => setSelectedInstalmentToPay(null)}
                 className="w-full bg-[#123d33] hover:bg-[#0c2922] text-white font-bold text-xs py-3.5 rounded-xl shadow-md transition-all cursor-pointer"
               >
-                Acknowledge & Close
+                {t("Acknowledge & Close")}
               </button>
             </div>
           </div>
+        )}
+
+        {joiningGroup && (
+          <JoinGroupDialog
+            group={joiningGroup}
+            onClose={() => setJoiningGroup(null)}
+            onJoined={() => setJoiningGroup(null)}
+          />
+        )}
+        {viewingAgreement && (
+          <AgreementViewer agreement={viewingAgreement} onClose={() => setViewingAgreement(null)} />
         )}
       </div>
     </div>

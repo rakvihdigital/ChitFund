@@ -2,43 +2,33 @@
 
 import { useReveal } from "@/lib/useReveal";
 import { ClosingCta } from "@/components/site/ClosingCta";
+import { msg, useT } from "@/lib/i18n";
 
 const steps = [
-  [
-    "01",
-    "Find your scheme",
-    "Choose a contribution and duration that feel right for your goals.",
-  ],
-  [
-    "02",
-    "Make it a habit",
-    "Complete your profile, join your group, and contribute each month.",
-  ],
-  [
-    "03",
-    "Move towards more",
-    "Participate in auctions and follow your contributions in your portal.",
-  ],
+  ["01", msg("Find your scheme"), msg("Choose a contribution and duration that feel right for your goals.")],
+  ["02", msg("Make it a habit"), msg("Complete your profile, join your group, and contribute each month.")],
+  ["03", msg("Move towards more"), msg("Participate in auctions and follow your contributions in your portal.")],
 ];
 
 export function HowItWorksSection() {
   useReveal();
+  const { t } = useT();
   return (
     <>
       <section id="how-it-works" className="how-section">
         <div className="site-container">
           <div className="section-heading" data-home-reveal="left">
             <div>
-              <span className="eyebrow">SIMPLE BY DESIGN</span>
+              <span className="eyebrow">{t("SIMPLE BY DESIGN")}</span>
               <h1 className="page-heading">
-                Your journey.
+                {t("Your journey.")}
                 <br />
-                <em>One step at a time.</em>
+                <em>{t("One step at a time.")}</em>
               </h1>
             </div>
             <p>
-              A familiar way to save.
-              <br /> A more considered digital experience.
+              {t("A familiar way to save.")}
+              <br /> {t("A more considered digital experience.")}
             </p>
           </div>
           <div className="steps-grid">
@@ -47,8 +37,8 @@ export function HowItWorksSection() {
                 <span className="step-number">
                   {num}
                 </span>
-                <h3>{title}</h3>
-                <p>{text}</p>
+                <h3>{t(title)}</h3>
+                <p>{t(text)}</p>
               </div>
             ))}
           </div>

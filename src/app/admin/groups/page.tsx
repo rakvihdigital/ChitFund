@@ -16,7 +16,7 @@ export default function AdminGroupsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const created = await createChitGroup({
-      groupName: groupName || `RAKVIH Scheme ₹${totalValue.toLocaleString()}`,
+      groupName: groupName || `ChitFund Scheme ₹${totalValue.toLocaleString()}`,
       totalValue,
       durationMonths,
       monthlyContribution: totalValue / durationMonths,
@@ -128,7 +128,7 @@ export default function AdminGroupsPage() {
                   type="text"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="e.g. RAKVIH Emerald ₹1 Lakh Scheme"
+                  placeholder="e.g. Emerald ₹1 Lakh Scheme"
                   className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-[#123d33]"
                   required
                 />

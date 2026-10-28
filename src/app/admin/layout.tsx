@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/lib/store';
-import { LayoutDashboard, Layers, Users, UserCheck, FileCheck, CreditCard, Award, Lock, BookOpen, History, LogOut, ArrowUpRight, Menu, X, ShieldCheck } from 'lucide-react';
+import { Wordmark } from '@/components/Wordmark';
+import { LayoutDashboard, Layers, Users, UserCheck, FileCheck, CreditCard, Award, Lock, BookOpen, History, LogOut, ArrowUpRight, Menu, X, ShieldCheck, Landmark } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoaded, adminUser, adminLogout, kycList, payouts, customers } = useApp();
+  const { isLoaded, adminUser, adminLogout, kycList, bankAccounts, payouts, customers } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const isLoginPage = pathname === '/admin/login';
   React.useEffect(() => { if (isLoaded && !adminUser && !isLoginPage) router.push('/admin/login'); }, [isLoaded, adminUser, isLoginPage, router]);
@@ -29,6 +29,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/users', label: 'Registered Customers', icon: Users, count: customers?.length },
     { href: '/admin/subscribers', label: 'Subscribers & Seats', icon: UserCheck },
     { href: '/admin/kyc', label: 'KYC Approvals', icon: FileCheck, count: kycList.filter(k => k.status === 'PENDING_APPROVAL').length },
+    { href: '/admin/bank-accounts', label: 'Bank Verification', icon: Landmark, count: bankAccounts.filter(b => !b.isVerified && !b.rejectionReason).length },
     { href: '/admin/collections', label: 'Collections & Dues', icon: CreditCard },
     { href: '/admin/auctions', label: 'e-Auctions & Draws', icon: Award },
     { href: '/admin/payouts', label: 'Maker-Checker Payouts', icon: Lock, count: payouts.filter(p => p.status === 'GUARANTOR_PENDING' || p.status === 'MAKER_APPROVED').length },
@@ -40,7 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <a href="#admin-content" className="skip-link">Skip to workspace</a>
     {menuOpen && <button className="admin-menu-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
     <aside id="admin-navigation" className={`admin-sidebar ${menuOpen ? 'is-open' : ''}`}>
-      <div className="admin-brand"><Image src="/logo-transparent.png" alt="" width={40} height={40} /><div>RAKVIH ADMIN<small>Management Console</small></div><button className="admin-menu-toggle" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X size={20} /></button></div>
+      <div className="admin-brand"><Wordmark tone="light" tagline="Admin · Management Console" /><button className="admin-menu-toggle" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X size={20} /></button></div>
       <div className="admin-system-status"><span><span className="admin-status-dot" /> SYSTEM ACTIVE</span><span>V2.4 PROD</span></div>
       <div className="admin-nav-label">CORE MODULES</div>
       <nav aria-label="Administration">{navItems.map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined} onClick={() => setMenuOpen(false)}><item.icon size={18} /><span>{item.label}</span>{!!item.count && <b>{item.count}</b>}</Link>)}</nav>
